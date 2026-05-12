@@ -44,6 +44,22 @@ WRN_INFO = {
 # 두 값 모두 설정해야 미세먼지 기능 활성화. 하나라도 비어 있으면 기능 비활성 (워크플로우는 정상 동작).
 DATA_GO_KR_KEY = os.environ.get('DATA_GO_KR_KEY', '').strip()
 DATA_GO_KR_REGION = os.environ.get('DATA_GO_KR_REGION', '').strip()
+
+# 생활/보건기상지수용 행정표준코드 (10자리, 시군구 단위)
+# - 정확한 시군구 코드를 LIVING_AREA_NO 시크릿으로 등록하는 게 가장 좋음
+# - 없으면 DATA_GO_KR_REGION 기반 광역 fallback 사용 (정확도 낮음)
+LIVING_AREA_DEFAULTS = {
+    '서울': '1100000000', '부산': '2600000000', '대구': '2700000000',
+    '인천': '2800000000', '광주': '2900000000', '대전': '3000000000',
+    '울산': '3100000000', '세종': '3611000000',
+    '경기북부': '4100000000', '경기남부': '4100000000',
+    '강원영서': '4200000000', '강원영동': '4200000000',
+    '충북': '4300000000', '충남': '4400000000',
+    '전북': '5200000000', '전남': '4600000000',
+    '경북': '4700000000', '경남': '4800000000', '제주': '5000000000',
+}
+LIVING_AREA_NO = os.environ.get('LIVING_AREA_NO', '').strip() or LIVING_AREA_DEFAULTS.get(DATA_GO_KR_REGION, '')
+
 PM_GRADE_EMOJI = {
     '좋음': '🟢',
     '보통': '🟡',
@@ -538,6 +554,119 @@ def fetch_air_realtime(now):
     return out
 
 
+def _living_base_time(now):
+    """생활기상지수 API base_time: 06시 또는 18시 발표 중 가장 최신 (지연 30분 고려)"""
+    eff = now - timedelta(minutes=30)
+    if eff.hour >= 18:
+        return eff.strftime('%Y%m%d') + '18'
+    if eff.hour >= 6:
+        return eff.strftime('%Y%m%d') + '06'
+    return (eff - timedelta(days=1)).strftime('%Y%m%d') + '18'
+
+
+def fetch_uv_index(now):
+    """자외선 지수 — 현재/오늘 최대값 반환 (float 또는 None)"""
+    if not DATA_GO_KR_KEY or not LIVING_AREA_NO:
+        return None
+    params = {
+        'serviceKey': DATA_GO_KR_KEY,
+        'dataType': 'JSON',
+        'numOfRows': 10,
+        'pageNo': 1,
+        'areaNo': LIVING_AREA_NO,
+        'time': _living_base_time(now),
+    }
+    try:
+        res = requests.get(
+            'https://apis.data.go.kr/1360000/LivingWthrIdxServiceV4/getUVIdxV4',
+            params=params, timeout=15)
+        if res.status_code != 200:
+            print(f"[WARN] 자외선지수 HTTP {res.status_code}")
+            return None
+        data = res.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"[WARN] 자외선지수 요청 실패: {e}")
+        return None
+    items = (data.get('response', {}).get('body', {}) or {}).get('items') or {}
+    item_list = items.get('item') if isinstance(items, dict) else items
+    if not item_list:
+        return None
+    first = item_list[0] if isinstance(item_list, list) else item_list
+    # h0, h3, h6, h9, ... 시간별 값 중 발표시각 기준 오늘 범위에서 max
+    todays = []
+    for k in ('h0','h3','h6','h9','h12','h15','h18','h21'):
+        v = first.get(k)
+        try:
+            if v is not None: todays.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    if not todays:
+        return None
+    return max(todays)
+
+
+def uv_grade(uv):
+    if uv is None: return None, ''
+    if uv < 3:  return '낮음', '🟢'
+    if uv < 6:  return '보통', '🟡'
+    if uv < 8:  return '높음', '🟠'
+    if uv < 11: return '매우높음', '🔴'
+    return '위험', '⚫'
+
+
+def fetch_pollen_risk(now):
+    """꽃가루 위험지수 — 참나무·소나무·잡초 중 최대 risk 반환"""
+    if not DATA_GO_KR_KEY or not LIVING_AREA_NO:
+        return None, None
+    base_time = _living_base_time(now)
+    endpoints = [
+        ('getOakPollenRiskIdxV4', '참나무'),
+        ('getPinePollenRiskIdxV4', '소나무'),
+        ('getWeedsPollenRiskIdxV4', '잡초'),
+    ]
+    max_risk = None
+    max_label = None
+    for ep, name in endpoints:
+        params = {
+            'serviceKey': DATA_GO_KR_KEY,
+            'dataType': 'JSON',
+            'numOfRows': 10,
+            'pageNo': 1,
+            'areaNo': LIVING_AREA_NO,
+            'time': base_time,
+        }
+        try:
+            res = requests.get(f'https://apis.data.go.kr/1360000/HealthWthrIdxServiceV4/{ep}',
+                               params=params, timeout=15)
+            if res.status_code != 200:
+                continue
+            data = res.json()
+        except (requests.exceptions.RequestException, ValueError):
+            continue
+        items = (data.get('response', {}).get('body', {}) or {}).get('items') or {}
+        item_list = items.get('item') if isinstance(items, dict) else items
+        if not item_list:
+            continue
+        first = item_list[0] if isinstance(item_list, list) else item_list
+        v = first.get('today') or first.get('h0')
+        try:
+            risk = int(v)
+        except (TypeError, ValueError):
+            continue
+        if max_risk is None or risk > max_risk:
+            max_risk = risk
+            max_label = name
+    return max_risk, max_label
+
+
+def pollen_grade(risk):
+    if risk is None: return None, ''
+    if risk == 0: return '낮음', '🟢'
+    if risk == 1: return '보통', '🟡'
+    if risk == 2: return '높음', '🟠'
+    return '매우높음', '🔴'
+
+
 def pm10_grade(val):
     if val is None: return None, ''
     if val <= 30:  return '좋음', '🟢'
@@ -694,6 +823,16 @@ def main():
     air_rt = fetch_air_realtime(now)
     if air_rt:
         print(f"실시간 대기질: PM10={air_rt.get('PM10','-')}, PM25={air_rt.get('PM25','-')}, O3={air_rt.get('O3','-')}")
+    uv_today = fetch_uv_index(now)
+    if uv_today is not None:
+        print(f"자외선지수: {uv_today}")
+    elif LIVING_AREA_NO:
+        print(f"자외선지수: 데이터 없음 (areaNo={LIVING_AREA_NO})")
+    else:
+        print("자외선지수: LIVING_AREA_NO 미설정 → 건너뜀")
+    pollen_max_risk, pollen_label = fetch_pollen_risk(now)
+    if pollen_max_risk is not None:
+        print(f"꽃가루 ({pollen_label}): risk={pollen_max_risk}")
     yesterday_str = (today_dt - timedelta(days=1)).strftime('%Y%m%d')
     y_minmax = extract_yesterday_max(cached_events, yesterday_str)
 
@@ -815,6 +954,14 @@ def main():
                     desc_lines.append(f"오존(O₃): {o3} ppm ({o3_e} {o3_l})")
             elif pm10_fcst or pm25_fcst:
                 desc_lines.append(f"미세먼지 예보 ({DATA_GO_KR_REGION}): {pm10_em} PM10 {pm10_fcst or '-'} / {pm25_em} PM2.5 {pm25_fcst or '-'}")
+
+            # 자외선·꽃가루
+            if uv_today is not None:
+                uv_l, uv_e = uv_grade(uv_today)
+                desc_lines.append(f"자외선 (오늘 최대): {uv_today:.1f} ({uv_e} {uv_l})")
+            if pollen_max_risk is not None:
+                pl_l, pl_e = pollen_grade(pollen_max_risk)
+                desc_lines.append(f"꽃가루 ({pollen_label}): {pl_e} {pl_l}")
 
             # 내일 미리보기
             tomorrow_str = (today_dt + timedelta(days=1)).strftime('%Y%m%d')

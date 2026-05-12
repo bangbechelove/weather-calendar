@@ -55,6 +55,8 @@ jobs:
           # 미세먼지 (공공데이터포털 / 에어코리아)
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           DATA_GO_KR_REGION: ${{ secrets.DATA_GO_KR_REGION }}
+          # 자외선/꽃가루 (공공데이터포털 / 생활·보건기상지수). 시군구 단위 행정표준코드.
+          LIVING_AREA_NO: ${{ secrets.LIVING_AREA_NO }}
           # 선택 — 기상특보 필터
           WRN_KEYWORDS: ${{ secrets.WRN_KEYWORDS }}
           WRN_INCLUDE_WATCH: ${{ secrets.WRN_INCLUDE_WATCH }}

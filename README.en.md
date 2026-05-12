@@ -17,120 +17,21 @@ This project pulls weather forecasts from the Korea Meteorological Administratio
   <em>📱 Actual Samsung Galaxy / Google Calendar view — weather emoji + min/max temp in each date cell</em>
 </p>
 
-## ✨ Features
-
-### 📅 Forecast data
-- 🌤️ **Short-term D+0~3** hourly detail / **Mid-term D+4~10** daily summary — 11 days total
-- ⚡ **Ultra-short forecast (0~6h)** auto-merged for near-term accuracy boost
-- 🚨 **Weather warnings auto-linked** — 10 types (heatwave, heavy rain, cold wave, typhoon, etc.) as separate events
-
-### 🌫 Air quality & health
-- 🌫️ **PM10 · PM2.5 · Ozone** realtime measurements + daily forecast (via AirKorea)
-- ☀️ **UV index** (today's max) + 5-tier grading
-- 🌸 **Pollen risk** for oak, pine, weeds — integrated max risk
-
-### 🌌 Astronomy
-- 🌅 **Sunrise · sunset + civil · astronomical twilight** (great for outdoor planning, photography)
-- 🌘 **Moon phase · illumination + moonrise · moonset** (8 Korean phase names)
-- 🌌 **Milky Way galactic center altitude + best viewing window** (for stargazers)
-
-### 💥 Disaster alerts
-- 🌋 **Earthquakes (M ≥ 3.0)** — domestic vs. overseas labeled, auto-event on detection
-- 🌀 **Active typhoons** — Korean impact flagged, includes forecast track at 6 timestamps
-
-### 🎨 Friendly natural-language output
-- Comfort messages ("😊 pleasant" / "🥵 very hot" — 7 tiers)
-- Beaufort wind grade ("leaves rustle" / "large branches sway" — 12 tiers, in Korean)
-- 16-point wind direction ("from the northeast") + umbrella suggestion
-- Next-rain prediction, year-over-yesterday comparison
-
-### 🔧 Operations
-- 📱 Works with **any calendar app that supports ICS URL subscription** — Google, Apple, Samsung, Naver, etc.
-- 🏠 Works for **any neighborhood in Korea** — just need grid coordinates (NX/NY) + region codes (auto-computed by setup guide)
-- 🆓 All APIs are free + GitHub Free plan = **fully free to operate**
-- 🎨 Quick-glance emoji: ☀️ clear / ⛅ partly cloudy / ☁️ cloudy / 🌧️ rain / ❄️ snow / ☔ shower / 🟢🟡🟠🔴 (air quality)
-
 ---
 
-## 📅 Sample ICS event data
+## 💚 Worried it's too technical?
 
-**Today's event** (rich info you see when you tap the event in your calendar — matches HA dashboard density):
+**No coding required.** If you can click a mouse and copy/paste, you can do this.
 
-```
-SUMMARY: ☁️ 16°C/23°C 🟡🟡        ← Short summary shown in the date cell
+| | |
+|---|---|
+| ⏱ **Estimated time** | ~15-30 min for first-timers (KMA approvals can add 1~2 days) |
+| 💰 **Cost** | **Completely free** (both APIs and GitHub free plan, forever) |
+| 🛠 **What you need** | A GitHub account, an email, and a Korean phone (for KMA verification) |
+| 🆘 **Stuck?** | Each step lists common gotchas. Open an [Issue](https://github.com/redchupa/weather-calendar/issues) if needed. |
+| 💡 **Trickiest parts** | Registering 9 secrets correctly + mobile sync. Both covered in detail. |
 
-DESCRIPTION:
-📍 Eungye Weather (37.443, 126.813)
-
-⛅ Now: Mostly cloudy
-Temp: 21°C (😊 Pleasant)
-High: 23°C / Low: 16°C
-Humidity: 65%
-Wind: 2 m/s (light breeze — leaves rustling) (from NW)
-Morning: ⛅ Cloudy / Afternoon: ☀️ Clear
-Today: 🌂 Bring an umbrella to be safe (30% chance of rain)
-Next rain🌧 : No rain in forecast window
-vs. Yesterday: Today's high is 1° warmer
-
-😊 Air is clean today
-PM10: 25.9 μg/m³ (🟢 Good)
-PM2.5: 12.7 μg/m³ (🟢 Good)
-Ozone (O₃): 0.0 ppm (🟢 Good)
-UV (today's max): 5.0 (🟡 Moderate)
-Pollen (oak): 🟡 Moderate
-
-⛅ Tomorrow?
-High 24°C (☀️ Warm) / Low 14°C (🧥 Cool)
-Morning: ☁️ Cloudy / Afternoon: ☀️ Clear
-
-☀️ Today's sun
-🌅 Sunrise: today 05:27
-🌇 Sunset: today 19:31
-🌆 Civil twilight: today 04:57 ~ 20:01
-🌃 Astronomical twilight: today 03:44 ~ 21:14
-
-🌗 The moon
-Phase: Waning Gibbous (illumination 27%)
-🌒 Moonrise: tomorrow 02:54
-🌘 Moonset: today 14:22
-
-🌌 Milky Way tracking
-🔭 Status: Not visible — below horizon (altitude -76.2°)
-Moon altitude: 2.1°
-⏰ Tonight's best viewing window: today 21:14 ~ tomorrow 03:44
-
-⏱ Hourly detail
-[15:00] ☀️ Clear 23°C (💧60% 🚩2m/s)
-...
-
-📊 Last updated: 2026-05-12 14:07:58 (KST)
-```
-
-**Other events**:
-- **D+1 ~ D+3 (short-term)**: Hourly detail (temp/sky/precip prob/humidity/wind) + air-quality grade
-- **D+4 ~ D+10 (mid-term)**: AM/PM or full-day summary + precip prob + min/max
-- **Weather warnings** (only when active): `🚨 Heatwave Warning (Seoul)` as separate event
-- **Earthquakes** (M ≥ 3.0 within 7 days): `🌋 Domestic Quake M3.2 (Gyeongju)` as separate event
-- **Typhoons** (when active): `🌀 Typhoon KHANUN 28m/s (Korean Impact)` + forecast track of 6 timestamps
-
----
-
-## 🗺️ Architecture overview
-
-```
-[KMA API] ──fetch──> [GitHub Actions: update_calendar.py]
-                              │
-                              ▼
-                      [weather.ics generated]
-                              │
-                      ──── commit/push ───→ GitHub repo
-                                                 │
-                                        Raw URL  │
-                                                 ▼
-                            [Your phone's calendar app subscribes to URL]
-```
-
-After one-time setup, **the workflow regenerates ICS → your calendar app syncs** — fully hands-off.
+> 💪 **Pep talk**: Take a break when stuck and come back — the answer usually surfaces. Just one or two hurdles, then it's smooth sailing.
 
 ---
 
@@ -208,7 +109,7 @@ Search the data.go.kr portal with these keywords, then click **[활용신청]** 
 
 | Search keyword | API name | Purpose |
 |---|---|---|
-| `에어코리아 대기오염정보` | Korea Environment Corp_AirKorea Air Pollution Info | 🌫️ PM10·PM2.5·O3 realtime + forecast |
+| `에어코리아 대기오염정보` | AirKorea Air Pollution Info | 🌫️ PM10·PM2.5·O3 realtime + forecast |
 | `생활기상지수` | KMA_Living Weather Index Service | ☀️ UV / food poisoning / asthma indices |
 | `꽃가루` | KMA_Health Weather Index Service (pollen) | 🌸 Oak · pine · weeds pollen |
 
@@ -380,12 +281,136 @@ That's a Google Calendar setting that asks whether **your copy** of the calendar
 
 By default [.github/workflows/update.yml](.github/workflows/update.yml) has `schedule:` enabled, running on KST:
 
-| Hour | 02:15 | 05:15 | 08:15 | 11:15 | 14:15 | 17:15 | 20:15 | 23:15 |
+| Time | 02:15 | 05:15 | 08:15 | 11:15 | 14:15 | 17:15 | 20:15 | 23:15 |
 |---|---|---|---|---|---|---|---|---|
 
-Aligned with KMA's short-term forecast release schedule (every 3h). To disable, comment out the `schedule:` block in the workflow YAML.
+Aligned with KMA's short-term forecast release schedule (every 3h).
 
+```yaml
+on:
+  schedule:
+    - cron: '15 17,20,23,2,5,8,11,14 * * *'   # every 3h KST
+```
+
+> 💡 To disable, comment out those two lines with `#`.
+>
 > ⚠️ Subscribed calendar clients still cache 8~24h. Source updating every 3h doesn't mean client refresh is that fast.
+
+---
+
+## ✨ What information goes in?
+
+### 📅 Forecast data
+- 🌤️ **Short-term D+0~3** hourly detail / **Mid-term D+4~10** daily summary — 11 days total
+- ⚡ **Ultra-short forecast (0~6h)** auto-merged for near-term accuracy boost
+- 🚨 **Weather warnings auto-linked** — 10 types (heatwave, heavy rain, cold wave, typhoon, etc.) as separate events
+
+### 🌫 Air quality & health
+- 🌫️ **PM10 · PM2.5 · Ozone** realtime measurements + daily forecast (via AirKorea)
+- ☀️ **UV index** (today's max) + 5-tier grading
+- 🌸 **Pollen risk** for oak, pine, weeds — integrated max risk
+
+### 🌌 Astronomy
+- 🌅 **Sunrise · sunset + civil · astronomical twilight** (great for outdoor planning, photography)
+- 🌘 **Moon phase · illumination + moonrise · moonset** (8 Korean phase names)
+- 🌌 **Milky Way galactic center altitude + best viewing window** (for stargazers)
+
+### 💥 Disaster alerts
+- 🌋 **Earthquakes (M ≥ 3.0)** — domestic vs. overseas labeled, auto-event on detection
+- 🌀 **Active typhoons** — Korean impact flagged, includes forecast track at 6 timestamps
+
+### 🎨 Friendly natural-language output
+- Comfort messages ("😊 pleasant" / "🥵 very hot" — 7 tiers)
+- Beaufort wind grade ("leaves rustle" / "large branches sway" — 12 tiers, in Korean)
+- 16-point wind direction ("from the northeast") + umbrella suggestion
+- Next-rain prediction, year-over-yesterday comparison
+
+### 🔧 Operations
+- 📱 Works with **any calendar app that supports ICS URL subscription** — Google, Apple, Samsung, Naver, etc.
+- 🏠 Works for **any neighborhood in Korea** — just need grid coordinates (NX/NY) + region codes
+- 🆓 All APIs are free + GitHub Free plan = **fully free to operate**
+
+---
+
+## 📅 Sample ICS event data
+
+**Today's event** (rich info you see when you tap the event in your calendar):
+
+```
+SUMMARY: ☁️ 16°C/23°C 🟡🟡        ← Short summary shown in the date cell
+
+DESCRIPTION:
+📍 Eungye Weather (37.443, 126.813)
+
+⛅ Now: Mostly cloudy
+Temp: 21°C (😊 Pleasant)
+High: 23°C / Low: 16°C
+Humidity: 65%
+Wind: 2 m/s (light breeze — leaves rustling) (from NW)
+Morning: ⛅ Cloudy / Afternoon: ☀️ Clear
+Today: 🌂 Bring an umbrella to be safe (30% chance of rain)
+Next rain🌧 : No rain in forecast window
+vs. Yesterday: Today's high is 1° warmer
+
+😊 Air is clean today
+PM10: 25.9 μg/m³ (🟢 Good)
+PM2.5: 12.7 μg/m³ (🟢 Good)
+Ozone (O₃): 0.0 ppm (🟢 Good)
+UV (today's max): 5.0 (🟡 Moderate)
+Pollen (oak): 🟡 Moderate
+
+⛅ Tomorrow?
+High 24°C (☀️ Warm) / Low 14°C (🧥 Cool)
+Morning: ☁️ Cloudy / Afternoon: ☀️ Clear
+
+☀️ Today's sun
+🌅 Sunrise: today 05:27
+🌇 Sunset: today 19:31
+🌆 Civil twilight: today 04:57 ~ 20:01
+🌃 Astronomical twilight: today 03:44 ~ 21:14
+
+🌗 The moon
+Phase: Waning Gibbous (illumination 27%)
+🌒 Moonrise: tomorrow 02:54
+🌘 Moonset: today 14:22
+
+🌌 Milky Way tracking
+🔭 Status: Not visible — below horizon (altitude -76.2°)
+Moon altitude: 2.1°
+⏰ Tonight's best viewing window: today 21:14 ~ tomorrow 03:44
+
+⏱ Hourly detail
+[15:00] ☀️ Clear 23°C (💧60% 🚩2m/s)
+...
+
+📊 Last updated: 2026-05-12 14:07:58 (KST)
+```
+
+**Other events**:
+- **D+1 ~ D+3 (short-term)**: Hourly detail (temp/sky/precip prob/humidity/wind) + air-quality grade
+- **D+4 ~ D+10 (mid-term)**: AM/PM or full-day summary + precip prob + min/max
+- **Weather warnings** (only when active): `🚨 Heatwave Warning (Seoul)` as separate event
+- **Earthquakes** (M ≥ 3.0 within 7 days): `🌋 Domestic Quake M3.2 (Gyeongju)` as separate event
+- **Typhoons** (when active): `🌀 Typhoon KHANUN 28m/s (Korean Impact)` + forecast track of 6 timestamps
+
+---
+
+## 🗺️ Architecture overview
+
+```
+[KMA API + data.go.kr] ──fetch──> [GitHub Actions: update_calendar.py]
+                                              │
+                                              ▼
+                                      [weather.ics generated]
+                                              │
+                                      ──── commit/push ───→ GitHub repo
+                                                                 │
+                                                        Raw URL  │
+                                                                 ▼
+                                          [Your phone's calendar app subscribes to URL]
+```
+
+After one-time setup, **the workflow regenerates ICS → your calendar app syncs** — fully hands-off.
 
 ---
 

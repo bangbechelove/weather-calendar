@@ -67,25 +67,30 @@ jobs:
           SUMMARY="${{ steps.weather.outputs.summary }}"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add weather.ics
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          if [ -n "$SUMMARY" ]; then
-            git commit -m "chore: update weather.ics — $SUMMARY [$KST_TIME KST]"
-          else
-            git commit -m "chore: update weather.ics [$KST_TIME KST]"
-          fi
-          # 동시 실행/외부 푸시와의 race 대응: rebase 후 푸시 재시도
+
+          # weather.ics 는 매 실행마다 완전 재생성되는 artifact라서
+          # 동시 실행과의 충돌 시 항상 우리 새 버전이 정답. 단순 재시도 루프로 처리.
           for attempt in 1 2 3 4 5; do
+            # 매 시도마다 최신 origin/main 으로 리셋하고 우리 파일만 얹어 커밋
+            cp weather.ics /tmp/weather.ics.fresh
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/weather.ics.fresh weather.ics
+            git add weather.ics
+            if git diff --cached --quiet; then
+              echo "No changes after sync with origin/main"
+              exit 0
+            fi
+            if [ -n "$SUMMARY" ]; then
+              git commit -m "chore: update weather.ics — $SUMMARY [$KST_TIME KST]"
+            else
+              git commit -m "chore: update weather.ics [$KST_TIME KST]"
+            fi
             if git push origin HEAD:main; then
               echo "Push succeeded on attempt $attempt"
               exit 0
             fi
-            echo "Push attempt $attempt failed, rebasing on latest origin/main..."
-            git fetch origin main
-            git rebase origin/main || { git rebase --abort; exit 1; }
+            echo "Push attempt $attempt failed — another run pushed first, retrying..."
             sleep $((attempt * 2))
           done
           echo "Push failed after 5 attempts"

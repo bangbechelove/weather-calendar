@@ -1,15 +1,34 @@
 # ☀️ 기상청 날씨 캘린더 (Weather Calendar)
 
-기상청 API(`apihub.kma.go.kr`)를 이용해 **오늘부터 10일치 한국 날씨 예보**를 iCalendar(`.ics`) 파일로 자동 생성하고, GitHub Actions로 주기적으로 갱신하는 프로젝트입니다.
+[![Update Weather ICS](https://github.com/redchupa/weather-calendar/actions/workflows/update.yml/badge.svg)](https://github.com/redchupa/weather-calendar/actions/workflows/update.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Pages](https://img.shields.io/badge/Setup_Guide-GitHub_Pages-2563eb?logo=github)](https://redchupa.github.io/weather-calendar/)
 
-생성된 `weather.ics` 파일의 **Raw URL** 을 Google / Apple / Samsung 캘린더 등에 **URL 구독**으로 등록하면, 매일 날짜 칸에 날씨 아이콘과 최저/최고 기온이 표시됩니다.
+> **🌟 5분만에 세팅하고, 내 폰 캘린더에 매일 한국 날씨를 자동으로 표시하기**
+
+기상청 API를 이용해 **오늘부터 10일치 한국 날씨 예보**를 iCalendar(`.ics`) 파일로 자동 생성하고, GitHub Actions로 주기적으로 갱신해 Google / Apple / Samsung 캘린더에 **URL 구독** 으로 띄우는 프로젝트입니다. 위젯 설치도 추가 앱 설치도 필요 없어요. 그냥 평소 쓰던 캘린더 앱에 한 줄 추가만 하면 끝.
+
+<p align="center">
+  <img src="docs/preview-mobile.png" alt="모바일 캘린더 적용 예시" width="320">
+  <br>
+  <em>📱 실제 갤럭시/Google 캘린더 앱 적용 모습 — 매일 날짜 칸에 날씨 이모지 + 최저/최고 기온</em>
+</p>
+
+## ✨ 특징
+
+- 🌤️ **단기 D+0~3** 시간별 상세 / **중기 D+4~10** 일별 요약, 총 11일치 예보
+- 📱 Google·Apple·Samsung·Naver 등 **표준 ICS 구독을 지원하는 모든 캘린더 앱** 호환
+- ⚡ **GitHub Actions** 만으로 운영 — 서버/호스팅 필요 없음
+- 🏠 한국 **어느 동네든** 격자좌표(NX/NY) + 구역코드만 알면 OK (가이드 페이지에 자동 계산기 내장)
+- 🆓 KMA API 인증키 무료 + GitHub Free 플랜으로 **완전 무료** 운영
+- 🎨 이모지로 한눈에 — ☀️맑음 / ⛅구름많음 / ☁️흐림 / 🌧️비 / ❄️눈 / ☔소나기
 
 > **🙏 출처(Original Author)**
 > 이 프로젝트는 [**@Murianwind**](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 를 기반으로 제작되었습니다. 원작자께 감사드립니다.
 
 ---
 
-## 📅 결과 예시
+## 📅 ICS 내부 데이터 예시
 
 이벤트 제목(SUMMARY) 예시: `⛅ 14°C/24°C`
 이벤트 본문(DESCRIPTION) 예시:

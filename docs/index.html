@@ -119,7 +119,37 @@
 
     <div class="card" style="border-top: 6px solid var(--success);">
         <h2><span class="step-num">6</span> 캘린더 구독하기</h2>
-        <p>생성된 <code>weather.ics</code> 파일의 <b>Raw</b> 주소를 복사하여 스마트폰 달력 앱에 등록하세요.</p>
+        <p>워크플로우 실행이 끝났다면, 본인 레포의 <code>weather.ics</code> 파일에 들어가 우측 상단 <b>[Raw]</b> 버튼을 누른 뒤 주소창 URL을 복사하세요.</p>
+
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:18px; margin-top:15px;">
+            <div style="font-size:0.9em; color:#065f46; font-weight:bold; margin-bottom:8px;">📋 Raw URL 형식</div>
+            <div style="position:relative;">
+                <input type="text" id="rawUrlInput" readonly value="https://raw.githubusercontent.com/<본인_GitHub_ID>/weather-calendar/main/weather.ics" style="width:100%; padding:12px 90px 12px 12px; border:1px solid #6ee7b7; border-radius:8px; font-family:monospace; font-size:0.85em; background:white; color:#064e3b; box-sizing:border-box;">
+                <button onclick="copyRawUrl()" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); padding:6px 14px; background:#059669; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85em; font-weight:bold;">복사</button>
+            </div>
+            <p style="font-size:0.85em; color:#047857; margin:10px 0 5px;">
+                ⚠️ <b>&lt;본인_GitHub_ID&gt;</b> 부분은 본인의 GitHub 사용자명으로 바꿔주세요.
+            </p>
+            <details style="margin-top:10px;">
+                <summary style="cursor:pointer; font-size:0.85em; color:#047857; font-weight:bold;">📌 실제 예시 보기 (이 레포 기준)</summary>
+                <code style="display:block; margin-top:8px; padding:10px; background:white; border:1px solid #d1fae5; border-radius:6px; font-size:0.8em; word-break:break-all; color:#064e3b;">https://raw.githubusercontent.com/redchupa/weather-calendar/main/weather.ics</code>
+                <p style="font-size:0.8em; color:#64748b; margin-top:8px;">이 페이지 운영자(redchupa)의 실제 URL입니다. 본인은 fork한 후 본인 ID로 바꿔서 사용하세요.</p>
+            </details>
+        </div>
+
+        <div class="info-box">
+            <b>📲 캘린더 앱별 등록 방법</b>
+            <ul style="margin-top:10px; padding-left:20px; font-size:0.95em; line-height:1.8;">
+                <li><b>Google 캘린더 (PC 권장):</b> calendar.google.com → 좌측 "다른 캘린더" 옆 <b>+</b> → <b>"URL로 만들기"</b> → URL 붙여넣기</li>
+                <li><b>iPhone (Apple 캘린더):</b> 설정 → 캘린더 → 계정 → 계정 추가 → 기타 → <b>구독 캘린더 추가</b> → 서버에 URL 입력</li>
+                <li><b>삼성 갤럭시:</b> 삼성 캘린더는 URL 구독 미지원 → <b>Google 캘린더 앱 설치</b> 후 위 방법 사용</li>
+            </ul>
+        </div>
+
+        <div class="alert-box" style="background:#fef3c7; border-color:#fde68a; color:#92400e;">
+            <strong>📱 모바일 앱에서 안 보이면?</strong><br>
+            Google 계정에 추가했는데 폰 앱에 안 보이는 경우가 흔합니다. <a href="https://calendar.google.com/calendar/syncselect" target="_blank" style="color:#78350f; font-weight:bold;">calendar.google.com/calendar/syncselect</a> 에 접속해 캘린더 체크 ON → 저장 → 폰 앱에서 "동기화" 토글 ON → 캘린더 목록 체크박스 ON 까지 해야 합니다.
+        </div>
 
         <div class="info-box">
             <b>⏰ 업데이트 주기 안내</b>
@@ -211,6 +241,31 @@
         function openModal(src) { document.getElementById('imageModal').style.display = "flex"; document.getElementById('modalImg').src = src; }
         function closeModal() { document.getElementById('imageModal').style.display = "none"; }
         window.onkeydown = function(event) { if (event.keyCode == 27) closeModal(); };
+
+        function copyRawUrl() {
+            const input = document.getElementById('rawUrlInput');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            try {
+                navigator.clipboard.writeText(input.value).then(() => showCopyToast('✓ 복사되었습니다! <본인_GitHub_ID> 부분을 본인 ID로 바꿔주세요'));
+            } catch (e) {
+                document.execCommand('copy');
+                showCopyToast('✓ 복사되었습니다!');
+            }
+        }
+        function showCopyToast(msg) {
+            let toast = document.getElementById('copyToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'copyToast';
+                toast.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#059669; color:white; padding:14px 24px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.2); font-weight:bold; z-index:10000; transition:opacity 0.3s; font-size:0.9em; max-width:90vw; text-align:center;';
+                document.body.appendChild(toast);
+            }
+            toast.innerHTML = msg;
+            toast.style.opacity = '1';
+            clearTimeout(window._copyToastTimer);
+            window._copyToastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2800);
+        }
     </script>
 </body>
 </html>

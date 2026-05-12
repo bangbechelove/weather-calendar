@@ -12,6 +12,28 @@ REG_ID_TEMP = os.environ.get('REG_ID_TEMP', '11B10101')
 REG_ID_LAND = os.environ.get('REG_ID_LAND', '11B00000')
 API_KEY = os.environ['KMA_API_KEY']
 
+# 기상특보 옵션:
+# - WRN_KEYWORDS: 쉼표로 구분된 지역 키워드 (예: "서울,경기,수도권"). 비어 있으면 전국 경보만 표시
+# - WRN_INCLUDE_WATCH: '1'이면 주의보까지 모두 표시. 기본값 '0' (경보만)
+WRN_KEYWORDS = [k.strip() for k in os.environ.get('WRN_KEYWORDS', '').split(',') if k.strip()]
+WRN_INCLUDE_WATCH = os.environ.get('WRN_INCLUDE_WATCH', '0') == '1'
+
+# 특보 종류 → (이모지, 한글명)
+WRN_INFO = {
+    'W': ('💨', '강풍'),
+    'R': ('🌧️', '호우'),
+    'C': ('🥶', '한파'),
+    'D': ('🔥', '건조'),
+    'O': ('🌊', '폭풍해일'),
+    'N': ('🌊', '지진해일'),
+    'V': ('🌊', '풍랑'),
+    'T': ('🌀', '태풍'),
+    'S': ('❄️', '대설'),
+    'Y': ('💛', '황사'),
+    'H': ('🥵', '폭염'),
+    'F': ('🌫️', '안개'),
+}
+
 def get_weather_info(sky, pty):
     sky, pty = str(sky), str(pty)
     if pty == '1': return "🌧️", "비"
@@ -119,6 +141,120 @@ def event_from_cache(raw_ical):
         print(f"[WARN] event cache parse failed: {e}")
     return None
 
+def get_ultra_short_base(now):
+    """초단기예보 base_date/base_time 계산: 매시 30분 발표, +45분 버퍼"""
+    buffered = now - timedelta(minutes=45)
+    if buffered.minute >= 30:
+        base = buffered.replace(minute=30, second=0, microsecond=0)
+    else:
+        base = buffered.replace(minute=30, second=0, microsecond=0) - timedelta(hours=1)
+    return base.strftime('%Y%m%d'), base.strftime('%H%M')
+
+def fetch_ultra_short_forecast(now):
+    """초단기예보(0~6시간) 호출 → {date: {time: {category: value}}}"""
+    base_date, base_time = get_ultra_short_base(now)
+    url = (
+        f"https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst"
+        f"?dataType=JSON&base_date={base_date}&base_time={base_time}"
+        f"&nx={NX}&ny={NY}&numOfRows=200&authKey={API_KEY}"
+    )
+    res = fetch_api(url, label=f"초단기예보@{base_date}{base_time}")
+    fmap = {}
+    if not res or 'body' not in res.get('response', {}):
+        return fmap
+    for it in res['response']['body']['items']['item']:
+        d, t, cat, val = it['fcstDate'], it['fcstTime'], it['category'], it['fcstValue']
+        fmap.setdefault(d, {}).setdefault(t, {})[cat] = val
+    return fmap
+
+def fetch_warnings(now):
+    """현재 발효 중인 기상특보 목록 조회 (text/CSV 응답)"""
+    tm_str = now.strftime('%Y%m%d%H%M')
+    url = (
+        f"https://apihub.kma.go.kr/api/typ01/url/wrn_now_data_new.php"
+        f"?fe=e&tm={tm_str}&disp=1&help=0&authKey={API_KEY}"
+    )
+    warnings = []
+    try:
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            print(f"[WARN] 기상특보 HTTP {res.status_code}")
+            return warnings
+        text = res.text
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] 기상특보 요청 실패: {e}")
+        return warnings
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        # CSV 파싱 (disp=1) — 따옴표 제거
+        parts = [p.strip().strip('"') for p in line.split(',')]
+        if len(parts) < 9:
+            continue
+        try:
+            warnings.append({
+                'reg_up': parts[0],
+                'reg_up_ko': parts[1],
+                'reg_id': parts[2],
+                'reg_ko': parts[3],
+                'tm_fc': parts[4],
+                'tm_ef': parts[5],
+                'wrn': parts[6],
+                'lvl': parts[7],
+                'cmd': parts[8],
+            })
+        except IndexError:
+            continue
+    return warnings
+
+def filter_warnings(warnings):
+    """사용자 설정에 따라 특보 필터링.
+
+    - WRN_KEYWORDS 가 있으면: REG_KO/REG_UP_KO 에 키워드 포함 시 매칭 (주의보+경보 모두)
+    - 비어 있으면: 전국의 '경보' 등급만 표시 (또는 WRN_INCLUDE_WATCH='1'이면 주의보도)
+    - 해제(CMD='해제' 등) 항목은 제외
+    """
+    out = []
+    seen_uids = set()
+    for w in warnings:
+        # 해제 항목 제외
+        if w['cmd'] and '해제' in w['cmd']:
+            continue
+        # 종류 코드가 매핑에 없으면 스킵 (지진해일 N 등 포함됨)
+        if w['wrn'] not in WRN_INFO:
+            continue
+        is_match = False
+        if WRN_KEYWORDS:
+            haystack = f"{w['reg_ko']} {w['reg_up_ko']}"
+            if any(kw in haystack for kw in WRN_KEYWORDS):
+                is_match = True
+        else:
+            # 키워드 없으면 경보만 (또는 옵션에 따라 주의보 포함)
+            if '경보' in w['lvl'] or WRN_INCLUDE_WATCH:
+                is_match = True
+        if not is_match:
+            continue
+        # 중복 제거 (같은 종류+수준+지역)
+        uid = f"{w['wrn']}-{w['lvl']}-{w['reg_id']}"
+        if uid in seen_uids:
+            continue
+        seen_uids.add(uid)
+        out.append(w)
+    return out
+
+def parse_kma_time(s):
+    """KMA의 'YYYYMMDDHHMM' 또는 'YYYYMMDDHH' 문자열을 datetime으로"""
+    s = str(s).strip()
+    fmts = ['%Y%m%d%H%M', '%Y%m%d%H', '%Y%m%d']
+    for f in fmts:
+        try:
+            return datetime.strptime(s, f)
+        except ValueError:
+            continue
+    return None
+
 def main():
     seoul_tz = pytz.timezone('Asia/Seoul')
     now = datetime.now(seoul_tz)
@@ -158,6 +294,19 @@ def main():
             if d not in forecast_map: forecast_map[d] = {}
             if t not in forecast_map[d]: forecast_map[d][t] = {}
             forecast_map[d][t][cat] = val
+
+    # 초단기예보로 가까운 0~6시간 정밀도 향상 (T1H→TMP 등 카테고리 매핑)
+    ultra_map = fetch_ultra_short_forecast(now)
+    ULTRA_CAT_MAP = {'T1H': 'TMP', 'RN1': 'PCP', 'SKY': 'SKY', 'PTY': 'PTY', 'REH': 'REH', 'WSD': 'WSD'}
+    ultra_count = 0
+    for d_str, day in ultra_map.items():
+        for t_str, cats in day.items():
+            for src, dst in ULTRA_CAT_MAP.items():
+                if src in cats:
+                    forecast_map.setdefault(d_str, {}).setdefault(t_str, {})[dst] = cats[src]
+                    ultra_count += 1
+    if ultra_count:
+        print(f"초단기예보 적용: {ultra_count}개 값 갱신")
 
     cache = {'TMP': '15', 'SKY': '1', 'PTY': '0', 'REH': '50', 'WSD': '1.0', 'POP': '0'}
     for d_str in sorted(forecast_map.keys()):
@@ -285,7 +434,40 @@ def main():
 
         cur_dt += timedelta(days=1)
 
+    # --- [5. 기상특보] ---
+    warnings_raw = fetch_warnings(now)
+    warnings = filter_warnings(warnings_raw)
+    print(f"기상특보: 총 {len(warnings_raw)}건 중 {len(warnings)}건 표시")
+
+    warning_count = 0
+    for w in warnings:
+        emoji, name = WRN_INFO.get(w['wrn'], ('⚠️', w['wrn']))
+        level_emoji = '🚨' if '경보' in w['lvl'] else '⚠️'
+        # 발효 시각
+        tm_ef_dt = parse_kma_time(w['tm_ef'])
+        if not tm_ef_dt:
+            continue
+        ef_local = seoul_tz.localize(tm_ef_dt) if tm_ef_dt.tzinfo is None else tm_ef_dt
+        # 종료 시각이 없으므로 발효일 기준 1일 길이로 잡고, 캘린더 앱이 갱신될 때마다 다시 그려짐
+        ev = Event()
+        ev.add('dtstamp', now)
+        ev.add('summary', f"{level_emoji} {emoji} {name}{w['lvl']} ({w['reg_ko']})")
+        ev.add('description',
+                f"발효: {ef_local.strftime('%Y-%m-%d %H:%M')} (KST)\n"
+                f"발표: {w['tm_fc']}\n"
+                f"지역: {w['reg_up_ko']} > {w['reg_ko']}\n"
+                f"종류: {name} {w['lvl']}\n"
+                f"\n최종 업데이트: {update_ts} (KST)")
+        ev.add('location', w['reg_ko'])
+        ev.add('dtstart', ef_local.date())
+        ev.add('dtend', ef_local.date() + timedelta(days=1))
+        ev.add('uid', f"wrn-{w['reg_id']}-{w['wrn']}-{w['tm_fc']}@kma")
+        ev.add('categories', 'WEATHER_ALERT')
+        cal.add_component(ev)
+        warning_count += 1
+
     print("최종 processed_dates:", sorted(processed_dates))
+    print(f"기상특보 이벤트: {warning_count}건 추가")
     with open('weather.ics', 'wb') as f:
         f.write(cal.to_ical())
 

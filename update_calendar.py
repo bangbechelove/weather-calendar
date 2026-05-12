@@ -563,15 +563,24 @@ def o3_grade(val):
 
 def parse_inform_grade(grade_str, region):
     """에어코리아 informGrade 문자열에서 region 등급 추출.
-    포맷: '서울 : 보통,제주 : 보통,...'"""
+    포맷: '서울 : 보통,제주 : 보통,...'
+
+    API는 '영서'/'영동'으로 응답하지만 사용자는 '강원영서'/'강원영동' 으로 입력할 수 있어
+    호환 매핑을 적용함."""
     if not grade_str:
         return None
+    # 사용자 입력 정규화
+    region_aliases = {
+        '강원영서': '영서',
+        '강원영동': '영동',
+    }
+    target = region_aliases.get(region, region)
     for chunk in grade_str.split(','):
         parts = chunk.split(':')
         if len(parts) != 2:
             continue
         area, level = parts[0].strip(), parts[1].strip()
-        if area == region:
+        if area == target:
             return level
     return None
 
@@ -605,12 +614,9 @@ def fetch_air_forecast(now):
             print(f"[WARN] 에어코리아 {code} 요청 실패: {e}")
             continue
         items = (data.get('response', {}).get('body', {}) or {}).get('items') or []
-        # 무조건 진단 출력 (한 번에 응답 구조 파악)
-        first_keys = list(items[0].keys()) if items else []
-        print(f"[DIAG-AIR] {code} status={res.status_code} items={len(items)} firstItemKeys={first_keys}")
-        if items:
-            print(f"[DIAG-AIR] firstItem(full)={dict(items[0])}")
-        matched_any = False
+        if not items:
+            print(f"[WARN] 에어코리아 {code} 응답 비어 있음")
+            continue
         for it in items:
             inform_date = it.get('informData', '').replace('-', '')
             grade_str = it.get('informGrade', '')
@@ -618,9 +624,6 @@ def fetch_air_forecast(now):
             if not inform_date or not grade:
                 continue
             result.setdefault(inform_date, {})[code] = grade
-            matched_any = True
-        if items and not matched_any:
-            print(f"[DIAG-AIR] {code} '{DATA_GO_KR_REGION}' 가 어떤 항목에도 매칭 안됨")
     return result
 
 def main():

@@ -55,13 +55,15 @@
 
     <div class="card">
         <h2><span class="step-num">2</span> 기상청 API 인증키 발급</h2>
-        <p>1. <a href="https://apihub.kma.go.kr/" target="_blank">기상청 API 허브</a> 회원가입 후 <b>[인증키 현황]</b>에서 키를 복사합니다.</p>
+        <p>1. <a href="https://apihub.kma.go.kr/" target="_blank">기상청 API 허브</a> 회원가입 후 <b>[인증키 현황]</b>에서 키를 복사합니다. (이메일 + 휴대폰 본인인증만 있으면 됨, 공동인증서 불필요)</p>
         <p>2. 좌측 메뉴 <b>[예특보]</b> 항목에서 아래 서비스들을 찾아 각각 <b class="highlight">활용 신청</b>을 완료하세요:</p>
         <div style="background: #f1f5f9; padding: 15px; border-radius: 10px; margin-top: 10px;">
             <ul style="margin: 0; font-size: 0.95em; line-height: 1.8; list-style: none; padding-left: 5px;">
-                <li>• <b>단기 예보</b> 〉 4.3 단기예보조회</li>
-                <li>• <b>중기 예보</b> 〉 2.2 중기기온조회</li>
-                <li>• <b>중기 예보</b> 〉 2.3 중기육상예보조회</li>
+                <li>• <b>단기 예보</b> 〉 4.2 초단기예보조회 <span style="color:#059669;">(0~6시간 정밀도 향상)</span></li>
+                <li>• <b>단기 예보</b> 〉 4.3 단기예보조회 <span style="color:#dc2626;">(필수)</span></li>
+                <li>• <b>중기 예보</b> 〉 2.2 중기기온조회 <span style="color:#dc2626;">(필수)</span></li>
+                <li>• <b>중기 예보</b> 〉 2.3 중기육상예보조회 <span style="color:#dc2626;">(필수)</span></li>
+                <li>• <b>기상특보</b> 〉 2. 특보현황 조회 <span style="color:#059669;">(폭염·호우 등 10종 경보 자동 이벤트)</span></li>
             </ul>
         </div>
     </div>
@@ -84,13 +86,63 @@
 
     <div class="card">
         <h2><span class="step-num">4</span> GitHub Secrets 설정</h2>
-        <p>내 저장소 <b>Settings → Secrets and variables → Actions</b>에서 아래 항목들을 추가합니다.</p>
-        <ul class="secrets-list">
-            <li>• <code>KMA_API_KEY</code> : 기상청 인증키</li>
-            <li>• <code>KMA_NX</code>, <code>KMA_NY</code> : 위에서 계산된 좌표 값</li>
-            <li>• <code>REG_ID_LAND</code>, <code>REG_ID_TEMP</code> : 위에서 확인한 구역 코드</li>
-            <li>• <code>LOCATION_NAME</code> : 달력에 표시될 동네 이름 (예: 우리집)</li>
-        </ul>
+        <p>내 저장소 <b>Settings → Secrets and variables → Actions</b>에서 아래 <b>8개 시크릿</b>을 모두 등록합니다.</p>
+
+        <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:0.95em;">
+            <thead>
+                <tr style="background:#f1f5f9; text-align:left;">
+                    <th style="padding:10px; border:1px solid #e2e8f0;">이름</th>
+                    <th style="padding:10px; border:1px solid #e2e8f0;">값 / 어디서 얻나</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>KMA_API_KEY</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">Step 2에서 복사한 기상청 인증키</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>KMA_NX</code> · <code>KMA_NY</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">Step 3에서 계산된 격자 좌표</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>REG_ID_LAND</code> · <code>REG_ID_TEMP</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">Step 3에서 계산된 구역 코드</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>LOCATION_NAME</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">달력에 표시될 동네 이름 (예: <code>우리집</code>, <code>은계</code>)</td>
+                </tr>
+                <tr style="background:#ecfdf5;">
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>DATA_GO_KR_KEY</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">공공데이터포털 일반 인증키 (🌫️ 미세먼지용) — <b>발급 방법은 바로 아래 참고</b></td>
+                </tr>
+                <tr style="background:#ecfdf5;">
+                    <td style="padding:10px; border:1px solid #e2e8f0;"><code>AIR_REGION</code></td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">에어코리아 예보 지역명 (아래 19개 중 하나)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:18px; margin-top:18px;">
+            <h3 style="margin-top:0; font-size:1.05em; color:#065f46;">🌫️ <code>DATA_GO_KR_KEY</code> 발급 방법</h3>
+            <ol style="padding-left:22px; margin:8px 0;">
+                <li><a href="https://www.data.go.kr/" target="_blank">공공데이터포털</a> 회원가입</li>
+                <li><a href="https://www.data.go.kr/data/15073861/openapi.do" target="_blank">한국환경공단_에어코리아_대기오염정보</a> 페이지에서 <b>[활용신청]</b> 클릭</li>
+                <li>승인(즉시~1일) 후 [마이페이지 → 데이터활용 → Open API → 인증키 발급현황]에서 <b>일반 인증키(Encoding)</b> 복사</li>
+            </ol>
+            <p style="font-size:0.85em; color:#047857; margin-top:8px; margin-bottom:0;">💡 이 인증키 하나로 공공데이터포털의 다른 API들도 함께 호출 가능합니다.</p>
+        </div>
+
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:18px; margin-top:12px;">
+            <h3 style="margin-top:0; font-size:1.05em; color:#065f46;">📍 <code>AIR_REGION</code> 가능 값</h3>
+            <p style="margin:8px 0;">아래 19개 중 본인 거주지에 해당하는 값을 정확히 입력 (오타·띄어쓰기 주의):</p>
+            <p style="background:white; padding:12px; border-radius:6px; border:1px solid #d1fae5; line-height:2;">
+                <code>서울</code> · <code>부산</code> · <code>대구</code> · <code>인천</code> · <code>광주</code> · <code>대전</code> · <code>울산</code> · <code>세종</code> · <code>경기북부</code> · <code>경기남부</code> · <code>강원영서</code> · <code>강원영동</code> · <code>충북</code> · <code>충남</code> · <code>전북</code> · <code>전남</code> · <code>경북</code> · <code>경남</code> · <code>제주</code>
+            </p>
+        </div>
+
+        <p style="font-size:0.85em; color:#64748b; margin-top:15px;">⚠️ 시크릿 이름은 대소문자/철자 정확히. 한 글자라도 다르면 빈 값으로 처리되어 기능이 비활성화됩니다.</p>
+        <p style="font-size:0.85em; color:#64748b; margin-top:8px;">💡 <b>참고:</b> 기상특보(🚨)는 Step 2의 "특보현황 조회" 활용신청만 마치면 추가 시크릿 없이 자동으로 표시됩니다. 지역 필터링을 원하면 README의 고급 설정 (<code>WRN_KEYWORDS</code>, <code>WRN_INCLUDE_WATCH</code>) 을 참고하세요.</p>
     </div>
 
     <div class="card">

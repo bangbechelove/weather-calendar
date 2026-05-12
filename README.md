@@ -84,4 +84,6 @@ on:
 
 ## 📜 라이선스
 
-원본 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 에 명시된 라이선스가 없으므로, 본 레포 역시 별도 라이선스를 두지 않습니다. 사용 시 원작자 표기를 유지해 주세요.
+[MIT License](LICENSE) © 2026 redchupa
+
+원본 아이디어 및 초기 코드의 출처는 [@Murianwind](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 입니다.

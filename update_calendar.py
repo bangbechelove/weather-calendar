@@ -35,55 +35,11 @@ WRN_INFO = {
 }
 
 # 미세먼지/초미세먼지 옵션 (에어코리아 via 공공데이터포털)
-# - DATA_GO_KR_KEY: 공공데이터포털 일반 인증키 (없으면 미세먼지 기능 비활성화)
-# - AIR_REGION: 에어코리아 예보 지역명 오버라이드 (없으면 REG_ID_LAND/TEMP 에서 자동 추정)
-DATA_GO_KR_KEY = os.environ.get('DATA_GO_KR_KEY', '')
-
-# REG_ID_LAND → 에어코리아 예보 지역명 매핑
-LAND_TO_AIR_REGION = {
-    '11A00101': '인천',       # 백령도
-    '11B00000': '서울',       # 서울·인천·경기 (기본 서울, 경기·인천 사용자는 AIR_REGION으로 오버라이드)
-    '11C10000': '충북',
-    '11C20000': '충남',       # 대전·세종·충남 (대전/세종은 별도 오버라이드 권장)
-    '11D10000': '강원영서',
-    '11D20000': '강원영동',
-    '11E00101': '강원영동',   # 울릉도
-    '11E00102': '강원영동',   # 독도
-    '11F10000': '전북',
-    '11F20000': '전남',       # 광주·전남 (광주는 별도 오버라이드 권장)
-    '11G00000': '제주',
-    '11H10000': '경북',       # 대구·경북 (대구는 별도 오버라이드 권장)
-    '11H20000': '경남',       # 부산·울산·경남 (부산/울산은 별도 오버라이드 권장)
-}
-
-def resolve_air_region():
-    """REG_ID_TEMP/LAND 로부터 에어코리아 지역명 자동 추정 (오버라이드 우선)"""
-    override = os.environ.get('AIR_REGION', '').strip()
-    if override:
-        return override
-    # REG_ID_TEMP 의 더 정밀한 매칭 (수도권/광역시 세분)
-    t = REG_ID_TEMP or ''
-    if t.startswith('11B1'):
-        return '서울'
-    if t.startswith('11B20'):
-        return '인천'
-    # 11B2 의 나머지: 경기 — 더 정확한 북부/남부 구분은 사용자 오버라이드 권장
-    if t.startswith('11C201') or t.startswith('11C202'):
-        return '세종'
-    if t.startswith('11C20'):
-        return '대전'
-    if t.startswith('11F205') or t.startswith('11F206'):
-        return '광주'
-    if t.startswith('11H10') and t.startswith('11H107'):
-        return '대구'
-    if t.startswith('11H20') and (t.startswith('11H202') or t.startswith('11H203')):
-        return '부산'
-    if t.startswith('11H20') and t.startswith('11H205'):
-        return '울산'
-    # 최종 fallback: REG_ID_LAND 광역 매핑
-    return LAND_TO_AIR_REGION.get(REG_ID_LAND, '서울')
-
-AIR_REGION = resolve_air_region()
+# - DATA_GO_KR_KEY: 공공데이터포털 일반 인증키
+# - AIR_REGION: 에어코리아 예보 지역명 (예: '서울', '경기북부', '경기남부', '강원영서')
+# 두 값 모두 설정해야 미세먼지 기능 활성화. 하나라도 비어 있으면 기능 비활성 (워크플로우는 정상 동작).
+DATA_GO_KR_KEY = os.environ.get('DATA_GO_KR_KEY', '').strip()
+AIR_REGION = os.environ.get('AIR_REGION', '').strip()
 PM_GRADE_EMOJI = {
     '좋음': '🟢',
     '보통': '🟡',
@@ -332,7 +288,7 @@ def fetch_air_forecast(now):
     반환: {'YYYYMMDD': {'PM10': '보통', 'PM25': '좋음'}, ...}
     """
     result = {}
-    if not DATA_GO_KR_KEY:
+    if not DATA_GO_KR_KEY or not AIR_REGION:
         return result
     for code in ('PM10', 'PM25'):
         params = {
@@ -419,11 +375,12 @@ def main():
 
     # 미세먼지/초미세먼지 예보 — 오늘/내일/모레 (있을 경우)
     air_forecast = fetch_air_forecast(now)
-    air_region_source = "AIR_REGION 오버라이드" if os.environ.get('AIR_REGION') else "자동 추정"
-    if air_forecast:
-        print(f"미세먼지 예보 ({AIR_REGION}, {air_region_source}): {len(air_forecast)}일치 수집")
-    elif DATA_GO_KR_KEY:
-        print(f"미세먼지 예보 ({AIR_REGION}, {air_region_source}): 데이터 없음 — 지역명 확인 필요")
+    if not DATA_GO_KR_KEY or not AIR_REGION:
+        print("미세먼지 예보: DATA_GO_KR_KEY 또는 AIR_REGION 미설정 → 건너뜀")
+    elif air_forecast:
+        print(f"미세먼지 예보 ({AIR_REGION}): {len(air_forecast)}일치 수집")
+    else:
+        print(f"미세먼지 예보 ({AIR_REGION}): 데이터 없음 — 지역명 오타 또는 API 응답 확인 필요")
 
     cache = {'TMP': '15', 'SKY': '1', 'PTY': '0', 'REH': '50', 'WSD': '1.0', 'POP': '0'}
     for d_str in sorted(forecast_map.keys()):

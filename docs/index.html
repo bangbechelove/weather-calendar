@@ -78,8 +78,9 @@
         <div id="result">
             <p>✅ <b>다음 단계(Secrets)에서 입력할 값입니다:</b></p>
             <ul>
-                <li>NX: <code id="res_nx">-</code> / NY: <code id="res_ny">-</code></li>
-                <li>REG_ID_LAND: <code id="res_land">-</code> / REG_ID_TEMP: <code id="res_temp">-</code></li>
+                <li><code>KMA_NX</code>: <code id="res_nx">-</code> / <code>KMA_NY</code>: <code id="res_ny">-</code></li>
+                <li><code>REG_ID_LAND</code>: <code id="res_land">-</code> / <code>REG_ID_TEMP</code>: <code id="res_temp">-</code></li>
+                <li><code>DATA_GO_KR_REGION</code>: <code id="res_air">-</code> <span id="res_air_note" style="font-size:0.85em; color:#64748b;"></span></li>
             </ul>
         </div>
     </div>
@@ -118,7 +119,7 @@
                 </tr>
                 <tr style="background:#ecfdf5;">
                     <td style="padding:10px; border:1px solid #e2e8f0;"><code>DATA_GO_KR_REGION</code></td>
-                    <td style="padding:10px; border:1px solid #e2e8f0;">에어코리아 예보 지역명 (아래 19개 중 하나)</td>
+                    <td style="padding:10px; border:1px solid #e2e8f0;">에어코리아 예보 지역명 (Step 3에서 자동 계산됨)</td>
                 </tr>
             </tbody>
         </table>
@@ -272,6 +273,39 @@
             return "11B00000";
         }
 
+        // REG_ID_TEMP + 위경도 → DATA_GO_KR_REGION (에어코리아 19개 지역) 매핑
+        // 광역시는 위경도 박스로 우선 매칭, 그 외엔 REG_ID_TEMP 접두사로 도 매칭
+        function getAirRegion(tempId, lat, lon) {
+            // 광역시 위경도 박스 우선
+            if (lat >= 37.42 && lat <= 37.72 && lon >= 126.76 && lon <= 127.20) return "서울";
+            if (lat >= 35.05 && lat <= 35.40 && lon >= 128.80 && lon <= 129.30) return "부산";
+            if (lat >= 35.75 && lat <= 35.95 && lon >= 128.45 && lon <= 128.80) return "대구";
+            if (lat >= 37.30 && lat <= 37.62 && lon >= 126.35 && lon <= 126.80) return "인천";
+            if (lat >= 35.10 && lat <= 35.27 && lon >= 126.70 && lon <= 126.97) return "광주";
+            if (lat >= 36.25 && lat <= 36.50 && lon >= 127.30 && lon <= 127.55) return "대전";
+            if (lat >= 35.45 && lat <= 35.70 && lon >= 129.13 && lon <= 129.42) return "울산";
+            if (lat >= 36.43 && lat <= 36.70 && lon >= 127.16 && lon <= 127.38) return "세종";
+            if (lat >= 33.10 && lat <= 33.60 && lon >= 126.10 && lon <= 126.99) return "제주";
+
+            // 도 단위 (REG_ID_TEMP 접두사 기반)
+            if (tempId === "11A00101") return "인천";                  // 백령도
+            if (tempId.startsWith("11B1")) return "서울";              // (위 박스에서 못 잡힌 경우 안전망)
+            if (tempId.startsWith("11B2")) {
+                // 경기 — 위도로 북부/남부 구분 (37.5 기준)
+                return lat > 37.5 ? "경기북부" : "경기남부";
+            }
+            if (tempId.startsWith("11C1")) return "충북";
+            if (tempId.startsWith("11C2")) return "충남";
+            if (tempId.startsWith("11D1")) return "강원영서";
+            if (tempId.startsWith("11D2") || tempId.startsWith("11E")) return "강원영동";
+            if (tempId.startsWith("11F1")) return "전북";
+            if (tempId.startsWith("11F2")) return "전남";
+            if (tempId.startsWith("11G")) return "제주";
+            if (tempId.startsWith("11H1")) return "경북";
+            if (tempId.startsWith("11H2")) return "경남";
+            return "서울"; // 최종 fallback
+        }
+
         async function calculateAll() {
             const tempId = document.getElementById('regionSelect').value;
             const address = document.getElementById('address').value;
@@ -280,11 +314,17 @@
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
                 const data = await res.json();
                 if (data.length === 0) return alert("주소를 찾을 수 없습니다.");
-                const grid = getGrid(parseFloat(data[0].lat), parseFloat(data[0].lon));
+                const lat = parseFloat(data[0].lat);
+                const lon = parseFloat(data[0].lon);
+                const grid = getGrid(lat, lon);
+                const airRegion = getAirRegion(tempId, lat, lon);
                 document.getElementById('res_nx').innerText = grid.x;
                 document.getElementById('res_ny').innerText = grid.y;
                 document.getElementById('res_temp').innerText = tempId;
                 document.getElementById('res_land').innerText = getLandCode(tempId);
+                document.getElementById('res_air').innerText = airRegion;
+                document.getElementById('res_air_note').innerText =
+                    `(위경도 ${lat.toFixed(3)}, ${lon.toFixed(3)} 기준 자동 매핑)`;
                 document.getElementById('result').style.display = 'block';
                 document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'center' });
             } catch (e) { alert("오류 발생!"); }

@@ -5,6 +5,8 @@
 [![Pages](https://img.shields.io/badge/Setup_Guide-GitHub_Pages-2563eb?logo=github)](https://redchupa.github.io/weather-calendar/)
 [![Sponsor](https://img.shields.io/badge/☕_Sponsor-Toss%20%7C%20PayPal-ff5f5f?logo=githubsponsors)](#-후원)
 
+🌐 **언어**: **한국어** · [English](README.en.md)
+
 > **🌟 5분만에 세팅하고, 내 폰 캘린더에 매일 한국 날씨를 자동으로 표시하기**
 
 기상청 API를 이용해 **오늘부터 10일치 한국 날씨 예보**를 iCalendar(`.ics`) 파일로 자동 생성하고, GitHub Actions로 주기적으로 갱신해 Google / Apple / Samsung 캘린더에 **URL 구독** 으로 띄우는 프로젝트입니다. 위젯 설치도 추가 앱 설치도 필요 없어요. 그냥 평소 쓰던 캘린더 앱에 한 줄 추가만 하면 끝.
@@ -133,6 +135,22 @@ DESCRIPTION:
 
 ---
 
+## 💚 처음이라 어렵지 않을까 걱정되시나요?
+
+**코딩 안 해도 돼요.** 마우스 클릭하고 복사·붙여넣기만 할 줄 알면 누구나 할 수 있어요. 진짜로요. 아래 흐름표 보세요:
+
+| 항목 | 내용 |
+|---|---|
+| ⏱ **예상 소요 시간** | 처음이면 **15~30분** (API 활용신청 대기 1~2일 별도) |
+| 💰 **비용** | **완전 무료** — API·GitHub 모두 무료 플랜으로 평생 사용 |
+| 🛠 **준비물** | GitHub 계정, 이메일 계정 1개, 휴대폰(본인인증용) |
+| 🆘 **막히면?** | 각 단계마다 흔한 함정과 해결책 적혀 있어요. 정말 안 되면 [Issues](https://github.com/redchupa/weather-calendar/issues)에 질문 남겨주세요 |
+| 💡 **가장 어려운 부분** | 시크릿 9개 등록과 모바일 동기화. 둘 다 자세한 안내가 있으니 안심 |
+
+> 💪 **격려 한 마디**: 이 프로젝트를 fork한 모든 사람이 결국 다 성공했어요. 막힐 때는 잠깐 쉬고 다시 보면 답이 보이더라고요. 어려운 한두 단계만 넘기면 나머지는 정말 쉬워요.
+
+---
+
 ## 🚀 처음부터 따라하는 설치 가이드
 
 > 💡 더 친절한 시각 가이드(좌표 자동 계산기 포함)는 **[📖 GitHub Pages 가이드](https://redchupa.github.io/weather-calendar/)** 를 참고하세요.
@@ -170,6 +188,12 @@ DESCRIPTION:
 이 네 값을 메모해두세요.
 
 ### 4️⃣ GitHub Secrets에 값 등록 (총 9개)
+
+> 📌 **API 인증키는 두 곳에서 따로 발급받아야 합니다**:
+> 1. **[기상청 API 허브](https://apihub.kma.go.kr/)** → `KMA_API_KEY` (Step 2에서 발급)
+> 2. **[공공데이터포털](https://www.data.go.kr/iim/api/selectAcountList.do)** → `DATA_GO_KR_KEY` (마이페이지에서 일반 인증키 발급/조회)
+>
+> 두 키는 **별개**이며 서로 호환되지 않아요. 둘 다 무료입니다.
 
 본인 Fork 레포에서:
 - **Settings** 탭 클릭

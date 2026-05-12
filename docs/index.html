@@ -33,15 +33,64 @@
 
         code { background: #fee2e2; padding: 3px 6px; border-radius: 4px; color: #991b1b; font-family: monospace; font-weight: bold; }
         .highlight { color: var(--accent); font-weight: bold; }
+        /* 언어 토글 */
+        #langToggle { position: fixed; top: 16px; right: 16px; z-index: 1000; background: white; border: 1px solid #cbd5e1; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 0.85em; font-weight: bold; color: #475569; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        #langToggle:hover { background: #f1f5f9; }
+        /* 언어별 표시 토글 */
+        html[lang="ko"] [data-lang="en"] { display: none !important; }
+        html[lang="en"] [data-lang="ko"] { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>☀️ 기상청 날씨 달력 자동화 제작 가이드</h1>
-    <p class="subtitle" style="margin-bottom: 30px;">이 저장소: <a href="https://github.com/redchupa/weather-calendar" target="_blank" class="repo-link">github.com/redchupa/weather-calendar</a></p>
+    <button id="langToggle" onclick="toggleLang()">🌐 <span data-lang="ko">English</span><span data-lang="en">한국어</span></button>
+
+    <h1 data-lang="ko">☀️ 기상청 날씨 달력 자동화 제작 가이드</h1>
+    <h1 data-lang="en">☀️ KMA Weather Calendar — Setup Guide</h1>
+    <p class="subtitle" style="margin-bottom: 30px;">
+        <span data-lang="ko">이 저장소:</span><span data-lang="en">This repo:</span>
+        <a href="https://github.com/redchupa/weather-calendar" target="_blank" class="repo-link">github.com/redchupa/weather-calendar</a>
+    </p>
+    <p class="subtitle" style="margin-top: -20px; margin-bottom: 30px;" data-lang="en">
+        📘 The full English setup walkthrough is in the
+        <a href="https://github.com/redchupa/weather-calendar/blob/main/README.en.md" target="_blank">README.en.md</a>.
+        Below is the original Korean guide with the auto-calculator (Step 3) and screenshots — useful even if you don't read Korean.
+    </p>
+
+    <div style="background: linear-gradient(135deg, #ecfdf5, #f0fdf4); border: 1px solid #86efac; border-radius: 16px; padding: 24px; margin-bottom: 30px;" data-lang="ko">
+        <h3 style="margin-top:0; color:#065f46; font-size:1.25em;">💚 처음이라 어렵지 않을까 걱정되시나요?</h3>
+        <p style="margin:8px 0; line-height:1.8;">
+            <b>코딩 안 해도 됩니다.</b> 마우스 클릭과 복사·붙여넣기만 할 줄 알면 누구나 할 수 있어요. 아래 6단계를 차근차근 따라가면 끝나요.
+        </p>
+        <ul style="margin:12px 0; padding-left:22px; line-height:2;">
+            <li>⏱ <b>예상 소요 시간</b>: 처음이면 약 <b>15~30분</b> (API 활용신청 대기 1~2일 별도)</li>
+            <li>💰 <b>비용</b>: <b>완전 무료</b> (API·GitHub 모두 무료 플랜으로 평생 사용 가능)</li>
+            <li>🛠 <b>준비물</b>: GitHub 계정, 카카오/네이버 등 이메일 계정 1개, 휴대폰 (본인인증용)</li>
+            <li>🆘 <b>막히면?</b> 각 단계마다 흔한 함정과 해결책이 적혀 있어요. 정말 모르겠으면 <a href="https://github.com/redchupa/weather-calendar/issues" target="_blank">Issues 탭</a>에 질문 남겨주세요.</li>
+        </ul>
+        <p style="margin:8px 0 0; font-size:0.9em; color:#047857;">
+            💡 <b>가장 어려운 부분</b>은 시크릿 9개 등록과 모바일에서 안 보일 때 동기화 설정이에요. 둘 다 이 가이드에 그림과 함께 자세히 적혀 있으니 안심하세요!
+        </p>
+    </div>
+
+    <div style="background: linear-gradient(135deg, #ecfdf5, #f0fdf4); border: 1px solid #86efac; border-radius: 16px; padding: 24px; margin-bottom: 30px;" data-lang="en">
+        <h3 style="margin-top:0; color:#065f46; font-size:1.25em;">💚 Worried it's too technical?</h3>
+        <p style="margin:8px 0; line-height:1.8;">
+            <b>No coding required.</b> If you can click a mouse and copy/paste, you can do this. Just follow the 6 steps below at your own pace.
+        </p>
+        <ul style="margin:12px 0; padding-left:22px; line-height:2;">
+            <li>⏱ <b>Estimated time</b>: ~15-30 min for first-timers (KMA approvals can add 1~2 days)</li>
+            <li>💰 <b>Cost</b>: <b>Completely free</b> (both APIs and GitHub free plan, forever)</li>
+            <li>🛠 <b>What you need</b>: A GitHub account, an email, and a Korean phone (for KMA verification)</li>
+            <li>🆘 <b>Stuck?</b> Each step lists common gotchas and fixes. Or open an <a href="https://github.com/redchupa/weather-calendar/issues" target="_blank">Issue</a>.</li>
+        </ul>
+        <p style="margin:8px 0 0; font-size:0.9em; color:#047857;">
+            💡 The <b>trickiest parts</b> are registering 9 secrets correctly and the mobile sync setup. Both are covered in detail with screenshots — you'll be fine!
+        </p>
+    </div>
 
     <div class="card">
-        <h2><span class="step-num">1</span> 프로젝트 포크 (Fork)</h2>
+        <h2><span class="step-num">1</span> <span data-lang="ko">프로젝트 포크 (Fork)</span><span data-lang="en">Fork the project</span></h2>
         <p>상단 <b class="highlight">이 저장소</b> 링크 접속 후 오른쪽 상단의 <b>[Fork]</b> 버튼을 눌러 내 계정으로 가져옵니다.</p>
         <hr style="border: 0; border-top: 1px dashed #e2e8f0; margin: 20px 0;">
         <div style="background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0;">
@@ -54,7 +103,7 @@
     </div>
 
     <div class="card">
-        <h2><span class="step-num">2</span> 기상청 API 인증키 발급</h2>
+        <h2><span class="step-num">2</span> <span data-lang="ko">기상청 API 인증키 발급</span><span data-lang="en">Get KMA API Hub auth key</span></h2>
         <p>1. <a href="https://apihub.kma.go.kr/" target="_blank">기상청 API 허브</a> 회원가입 후 <b>[인증키 현황]</b>에서 키를 복사합니다. (이메일 + 휴대폰 본인인증만 있으면 됨, 공동인증서 불필요)</p>
         <p>2. 좌측 메뉴에서 아래 서비스들을 찾아 각각 <b class="highlight">활용 신청</b>을 완료하세요:</p>
         <div style="background: #f1f5f9; padding: 15px; border-radius: 10px; margin-top: 10px;">
@@ -71,7 +120,7 @@
     </div>
 
     <div class="card" id="step3">
-        <h2><span class="step-num">3</span> 내 동네 설정값 찾기</h2>
+        <h2><span class="step-num">3</span> <span data-lang="ko">내 동네 설정값 찾기</span><span data-lang="en">Find your neighborhood's settings (auto-calculator)</span></h2>
         <p><b>① 가까운 예보 지점을 선택하세요:</b></p>
         <select id="regionSelect"><option value="">데이터 로딩 중...</option></select>
         <p><b>② 상세 주소(도로명)를 입력하세요:</b></p>
@@ -88,7 +137,17 @@
     </div>
 
     <div class="card">
-        <h2><span class="step-num">4</span> GitHub Secrets 설정</h2>
+        <h2><span class="step-num">4</span> <span data-lang="ko">GitHub Secrets 설정</span><span data-lang="en">Configure GitHub Secrets</span></h2>
+
+        <div style="background:#fef9c3; border:1px solid #fde68a; border-radius:10px; padding:15px; margin:15px 0; font-size:0.95em;">
+            <p style="margin:0 0 8px; font-weight:bold; color:#854d0e;">📌 <span data-i18n="step4_keys_note_title">API 인증키는 두 곳에서 따로 발급받아야 합니다 (둘 다 무료)</span></p>
+            <ol style="margin:0; padding-left:22px; line-height:1.8;">
+                <li><a href="https://apihub.kma.go.kr/" target="_blank"><b>기상청 API 허브</b></a> → <code>KMA_API_KEY</code> <span data-i18n="step4_keys_note_kma">(Step 2에서 발급)</span></li>
+                <li><a href="https://www.data.go.kr/iim/api/selectAcountList.do" target="_blank"><b>공공데이터포털 마이페이지</b></a> → <code>DATA_GO_KR_KEY</code> <span data-i18n="step4_keys_note_dgk">(일반 인증키 발급/조회)</span></li>
+            </ol>
+            <p style="margin:8px 0 0; font-size:0.88em; color:#92400e;" data-i18n="step4_keys_note_warning">두 키는 별개이며 서로 호환되지 않습니다.</p>
+        </div>
+
         <p>내 저장소 <b>Settings → Secrets and variables → Actions → <b>[New repository secret]</b></b> 버튼을 눌러, 아래 <b>9개 시크릿</b>을 하나씩 모두 등록합니다.</p>
 
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:15px; margin:15px 0;">
@@ -181,7 +240,7 @@
     </div>
 
     <div class="card">
-        <h2><span class="step-num">5</span> 자동 업데이트 활성화</h2>
+        <h2><span class="step-num">5</span> <span data-lang="ko">자동 업데이트 활성화</span><span data-lang="en">Enable auto-update</span></h2>
         <div class="alert-box">
             <strong>⚠️ 중요: GitHub Actions 활성화 (최초 1회)</strong><br>
             GitHub 정책상 Fork된 저장소는 자동 실행 기능이 꺼져 있습니다.<br>
@@ -202,7 +261,7 @@
     </div>
 
     <div class="card" style="border-top: 6px solid var(--success);">
-        <h2><span class="step-num">6</span> 캘린더 구독하기</h2>
+        <h2><span class="step-num">6</span> <span data-lang="ko">캘린더 구독하기</span><span data-lang="en">Subscribe in your calendar</span></h2>
         <p>워크플로우 실행이 끝났다면, 본인 레포의 <code>weather.ics</code> 파일에 들어가 우측 상단 <b>[Raw]</b> 버튼을 누른 뒤 주소창 URL을 복사하세요.</p>
 
         <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:18px; margin-top:15px;">
@@ -246,7 +305,7 @@
             </p>
         </div>
 
-        <p style="margin-top: 20px;"><b>📸 달력 적용 예시 (클릭하면 커집니다):</b></p>
+        <p style="margin-top: 20px;"><b>📸 달력 적용 예시</b></p>
         <img src="./calendar.png" alt="구독 예시" class="example-img" onclick="openModal(this.src)">
     </div>
 
@@ -267,9 +326,6 @@
         </table>
     </div>
 
-    <footer class="credit-box" style="margin-top: 40px; margin-bottom: 20px;">
-        🙏 <b>출처(Original)</b>: 본 프로젝트는 <a href="https://github.com/Murianwind/weather-calendar" target="_blank">Murianwind/weather-calendar</a> 를 기반으로 제작되었으며, 원작자 <a href="https://github.com/Murianwind" target="_blank">@Murianwind</a> 님께 감사드립니다.
-    </footer>
 
     <div id="imageModal" onclick="closeModal()">
         <span class="close-btn" onclick="closeModal()">&times;</span>
@@ -381,6 +437,22 @@
                 document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'center' });
             } catch (e) { alert("오류 발생!"); }
         }
+
+        // 언어 토글 (KO ↔ EN). localStorage 에 선택 저장.
+        function toggleLang() {
+            const html = document.documentElement;
+            const next = html.lang === 'ko' ? 'en' : 'ko';
+            html.lang = next;
+            try { localStorage.setItem('weatherCal.lang', next); } catch (e) {}
+        }
+        (function initLang() {
+            try {
+                const saved = localStorage.getItem('weatherCal.lang');
+                if (saved === 'en' || saved === 'ko') {
+                    document.documentElement.lang = saved;
+                }
+            } catch (e) {}
+        })();
 
         function openModal(src) { document.getElementById('imageModal').style.display = "flex"; document.getElementById('modalImg').src = src; }
         function closeModal() { document.getElementById('imageModal').style.display = "none"; }

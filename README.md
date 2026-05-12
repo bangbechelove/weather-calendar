@@ -12,7 +12,9 @@
 기상청 API를 이용해 **오늘부터 10일치 한국 날씨 예보**를 iCalendar(`.ics`) 파일로 자동 생성하고, GitHub Actions로 주기적으로 갱신해 Google / Apple / Samsung 캘린더에 **URL 구독** 으로 띄우는 프로젝트입니다. 위젯 설치도 추가 앱 설치도 필요 없어요. 그냥 평소 쓰던 캘린더 앱에 한 줄 추가만 하면 끝.
 
 <p align="center">
-  <img src="docs/preview-mobile.png" alt="모바일 캘린더 적용 예시" width="320">
+  <img src="docs/preview-mobile.png" alt="모바일 캘린더 적용 예시 (날짜 셀)" width="320">
+  &nbsp;&nbsp;
+  <img src="docs/calendar.png" alt="모바일 캘린더 적용 예시 (월 뷰)" width="320">
   <br>
   <em>📱 실제 갤럭시/Google 캘린더 앱 적용 모습 — 매일 날짜 칸에 날씨 이모지 + 최저/최고 기온</em>
 </p>

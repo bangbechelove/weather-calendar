@@ -12,7 +12,9 @@
 This project pulls weather forecasts from the Korea Meteorological Administration (KMA) API, generates an iCalendar (`.ics`) file containing **today through 10 days of forecasts**, and refreshes it on a GitHub Actions schedule. Subscribe the URL once in Google / Apple / Samsung Calendar and you're done — no widget, no extra app, just one URL.
 
 <p align="center">
-  <img src="docs/preview-mobile.png" alt="Mobile calendar in action" width="320">
+  <img src="docs/preview-mobile.png" alt="Mobile calendar in action (date cells)" width="320">
+  &nbsp;&nbsp;
+  <img src="docs/calendar.png" alt="Mobile calendar in action (month view)" width="320">
   <br>
   <em>📱 Actual Samsung Galaxy / Google Calendar view — weather emoji + min/max temp in each date cell</em>
 </p>

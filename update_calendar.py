@@ -1,8 +1,12 @@
 import os
+import math
 import requests
 import pytz
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from icalendar import Calendar, Event
+from astral import LocationInfo, moon
+from astral.sun import sun, dawn as astral_dawn, dusk as astral_dusk
+import ephem
 
 # --- [1. 설정] ---
 NX = int(os.environ.get('KMA_NX', 60))
@@ -268,6 +272,295 @@ def parse_kma_time(s):
             continue
     return None
 
+def grid_to_latlon(nx, ny):
+    """KMA Lambert Conformal Conic 격자 → 위경도 역변환"""
+    RE, GRID, SLAT1, SLAT2 = 6371.00877, 5.0, 30.0, 60.0
+    OLON, OLAT, XO, YO = 126.0, 38.0, 43, 136
+    DEGRAD = math.pi / 180.0
+    re = RE / GRID
+    slat1, slat2 = SLAT1 * DEGRAD, SLAT2 * DEGRAD
+    olon, olat = OLON * DEGRAD, OLAT * DEGRAD
+    sn = math.tan(math.pi*0.25 + slat2*0.5) / math.tan(math.pi*0.25 + slat1*0.5)
+    sn = math.log(math.cos(slat1)/math.cos(slat2)) / math.log(sn)
+    sf = (math.tan(math.pi*0.25 + slat1*0.5)**sn) * math.cos(slat1) / sn
+    ro = re*sf / (math.tan(math.pi*0.25 + olat*0.5)**sn)
+    xn, yn = nx - XO, ro - ny + YO
+    ra = math.sqrt(xn*xn + yn*yn)
+    if sn < 0:
+        ra = -ra
+    alat = (re*sf/ra) ** (1.0/sn)
+    alat = 2.0 * math.atan(alat) - math.pi*0.5
+    if abs(xn) <= 0:
+        theta = 0.0
+    elif abs(yn) <= 0:
+        theta = math.pi*0.5 * (-1 if xn < 0 else 1)
+    else:
+        theta = math.atan2(xn, yn)
+    alon = theta/sn + olon
+    return alat / DEGRAD, alon / DEGRAD
+
+
+# --- 자연어 메시지 헬퍼 ---
+
+def temp_comfort_message(temp):
+    """기온 → 체감 메시지 (이모지 + 한 줄)"""
+    try:
+        t = float(temp)
+    except (TypeError, ValueError):
+        return ""
+    if t >= 33: return "🥵 매우 더워요"
+    if t >= 28: return "☀️ 더워요"
+    if t >= 22: return "☀️ 따뜻해요"
+    if t >= 15: return "😊 쾌적해요"
+    if t >= 8:  return "🧥 선선해요"
+    if t >= 0:  return "🥶 추워요"
+    return "❄️ 매우 추워요"
+
+
+# 보퍼트 풍력 계급 (m/s 기준)
+BEAUFORT_TABLE = [
+    (0.3,  "고요"),
+    (1.6,  "실바람 — 연기가 천천히 흐름"),
+    (3.4,  "남실바람 — 잎이 바스락거림"),
+    (5.5,  "산들바람 — 잎과 작은 가지가 흔들림"),
+    (8.0,  "건들바람 — 작은 가지가 흔들림"),
+    (10.8, "흔들바람 — 작은 나무 흔들림"),
+    (13.9, "된바람 — 큰 가지가 흔들림"),
+    (17.2, "센바람 — 나무 전체가 흔들림"),
+    (20.8, "큰바람 — 나뭇가지 부러짐"),
+    (24.5, "큰센바람"),
+    (28.5, "노대바람"),
+    (32.7, "왕바람"),
+]
+def wind_message(wsd):
+    try:
+        v = float(wsd)
+    except (TypeError, ValueError):
+        return ""
+    for limit, label in BEAUFORT_TABLE:
+        if v <= limit:
+            return label
+    return "싹쓸바람"
+
+
+def wind_direction_text(vec):
+    """기상청 풍향(0~360°) → 16방위 한글"""
+    try:
+        deg = float(vec)
+    except (TypeError, ValueError):
+        return ""
+    dirs = ["북", "북북동", "북동", "동북동", "동", "동남동", "남동", "남남동",
+            "남", "남남서", "남서", "서남서", "서", "서북서", "북서", "북북서"]
+    idx = int((deg + 11.25) / 22.5) % 16
+    return dirs[idx]
+
+
+def umbrella_message(pop, pty):
+    """강수확률·강수형태 → 우산 추천 메시지"""
+    try:
+        p = int(pop)
+    except (TypeError, ValueError):
+        p = 0
+    if str(pty) in {'1', '2', '4', '5'}:
+        return f"☔ 우산 꼭 챙기세요 (비올 확률 {p}%)"
+    if p >= 60:
+        return f"🌂 우산 챙기세요 (비올 확률 {p}%)"
+    if p >= 30:
+        return f"🌂 우산 챙기는 게 안전해요 (비올 확률 {p}%)"
+    return f"☀️ 우산 안 챙겨도 OK (비올 확률 {p}%)"
+
+
+def find_next_rain(forecast_map, after_dt, seoul_tz):
+    """forecast_map 에서 가장 가까운 비/눈 시각 반환 ('5월 12일 오후 3시' 형식)"""
+    for d_str in sorted(forecast_map.keys()):
+        day = forecast_map[d_str]
+        for t_str in sorted(day.keys()):
+            pty = str(day[t_str].get('PTY', '0'))
+            if pty != '0':
+                try:
+                    dt = seoul_tz.localize(datetime.strptime(f"{d_str}{t_str}", '%Y%m%d%H%M'))
+                except ValueError:
+                    continue
+                if dt < after_dt:
+                    continue
+                kind = {'1':'비','2':'비/눈','3':'눈','4':'소나기','5':'빗방울','6':'빗방울/눈날림','7':'눈날림'}.get(pty,'강수')
+                hour = dt.hour
+                ampm = '오전' if hour < 12 else '오후'
+                hour12 = hour if hour <= 12 else hour - 12
+                if hour == 0: hour12 = 12
+                return f"{dt.month}월 {dt.day}일 {ampm} {hour12}시경 {kind}"
+    return None
+
+
+# --- 천문 계산 (astral + ephem) ---
+
+# 달 위상 한글 (조도 % 기반 간이 매핑)
+def moon_phase_korean(phase_index):
+    """astral.moon.phase(): 0~27.99 (0=신월, 14=만월)"""
+    if phase_index < 1.84566:  return "삭(신월)"
+    if phase_index < 5.53699:  return "초승달"
+    if phase_index < 9.22831:  return "상현달"
+    if phase_index < 12.91963: return "하현전 차오름달"
+    if phase_index < 16.61096: return "보름달"
+    if phase_index < 20.30228: return "하현전 기우는달"
+    if phase_index < 23.99361: return "하현달"
+    if phase_index < 27.68493: return "그믐달"
+    return "삭(신월)"
+
+
+def moon_phase_emoji(phase_index):
+    if phase_index < 1.84566:  return "🌑"
+    if phase_index < 5.53699:  return "🌒"
+    if phase_index < 9.22831:  return "🌓"
+    if phase_index < 12.91963: return "🌔"
+    if phase_index < 16.61096: return "🌕"
+    if phase_index < 20.30228: return "🌖"
+    if phase_index < 23.99361: return "🌗"
+    return "🌘"
+
+
+def compute_moon_times(lat, lon, day):
+    """ephem 으로 월출/월몰 시각 (해당 day 기준 가장 가까운 시각)"""
+    obs = ephem.Observer()
+    obs.lat, obs.lon = str(lat), str(lon)
+    obs.date = day.strftime('%Y/%m/%d 00:00:00')
+    moon = ephem.Moon()
+    try:
+        rise = ephem.localtime(obs.next_rising(moon))
+    except (ephem.AlwaysUpError, ephem.NeverUpError):
+        rise = None
+    obs.date = day.strftime('%Y/%m/%d 00:00:00')
+    try:
+        set_ = ephem.localtime(obs.next_setting(moon))
+    except (ephem.AlwaysUpError, ephem.NeverUpError):
+        set_ = None
+    return rise, set_
+
+
+def compute_galactic_center_alt(lat, lon, when):
+    """은하수 중심(궁수자리) 고도 계산"""
+    obs = ephem.Observer()
+    obs.lat, obs.lon = str(lat), str(lon)
+    obs.date = when.astimezone(pytz.UTC).strftime('%Y/%m/%d %H:%M:%S')
+    # 은하수 중심 (Galactic Coordinate System Origin)
+    # 적도좌표 ≈ RA 17h45m40s, Dec -29°00'28"
+    gc = ephem.FixedBody()
+    gc._ra = '17:45:40.04'
+    gc._dec = '-29:00:28.1'
+    gc._epoch = ephem.J2000
+    gc.compute(obs)
+    return math.degrees(float(gc.alt))
+
+
+def format_time_kor(dt, ref_now):
+    """datetime → '오늘 19:31' 또는 '내일 05:25'"""
+    if dt is None:
+        return "-"
+    if dt.tzinfo is None:
+        dt = pytz.timezone('Asia/Seoul').localize(dt)
+    today = ref_now.date()
+    label = "오늘" if dt.date() == today else ("내일" if dt.date() == today + timedelta(days=1) else dt.strftime('%m월 %d일'))
+    return f"{label} {dt.strftime('%H:%M')}"
+
+
+# --- 어제 비교 (단기예보 캐시에서 어제 기온 추출) ---
+
+def extract_yesterday_max(cached_events_raw, yesterday_str):
+    """캐시된 어제 단기예보 이벤트에서 SUMMARY 의 최고기온을 추출.
+    포맷: '⛅ 14°C/24°C' or '⛅ 14°C/24°C 🟢🟡'"""
+    if yesterday_str not in cached_events_raw:
+        return None
+    raw = cached_events_raw[yesterday_str].decode('utf-8', errors='ignore')
+    # SUMMARY 라인의 'NN°C/NN°C' 패턴
+    import re
+    m = re.search(r'SUMMARY:[^\r\n]*?([\-\d]+)°C/([\-\d]+)°C', raw)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except ValueError:
+        return None
+
+
+# --- 에어코리아 실시간 측정 (시도별) ---
+
+def fetch_air_realtime(now):
+    """시도별 실시간 측정치 (PM10/PM2.5/O3 μg/m³, ppm)"""
+    if not DATA_GO_KR_KEY or not DATA_GO_KR_REGION:
+        return {}
+    # 시도명 매핑 (에어코리아 예보 지역 → 실시간 sidoName)
+    SIDO_MAP = {
+        '서울': '서울', '부산': '부산', '대구': '대구', '인천': '인천',
+        '광주': '광주', '대전': '대전', '울산': '울산', '세종': '세종',
+        '경기북부': '경기', '경기남부': '경기',
+        '강원영서': '강원', '강원영동': '강원',
+        '충북': '충북', '충남': '충남', '전북': '전북', '전남': '전남',
+        '경북': '경북', '경남': '경남', '제주': '제주',
+    }
+    sido = SIDO_MAP.get(DATA_GO_KR_REGION, '서울')
+    params = {
+        'serviceKey': DATA_GO_KR_KEY,
+        'returnType': 'json',
+        'numOfRows': 100,
+        'pageNo': 1,
+        'sidoName': sido,
+        'ver': '1.0',
+    }
+    try:
+        res = requests.get(
+            'https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty',
+            params=params, timeout=15)
+        if res.status_code != 200:
+            print(f"[WARN] 에어코리아 실시간 HTTP {res.status_code}")
+            return {}
+        data = res.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"[WARN] 에어코리아 실시간 요청 실패: {e}")
+        return {}
+    items = (data.get('response', {}).get('body', {}) or {}).get('items') or []
+    if not items:
+        return {}
+    # 시도 평균치 계산 (개별 측정소 평균)
+    sums = {'PM10': [], 'PM25': [], 'O3': []}
+    for it in items:
+        for k_api, k_out in [('pm10Value','PM10'),('pm25Value','PM25'),('o3Value','O3')]:
+            v = it.get(k_api)
+            if v in (None, '-', ''):
+                continue
+            try:
+                sums[k_out].append(float(v))
+            except ValueError:
+                continue
+    out = {}
+    for k, vs in sums.items():
+        if vs:
+            out[k] = round(sum(vs)/len(vs), 1)
+    return out
+
+
+def pm10_grade(val):
+    if val is None: return None, ''
+    if val <= 30:  return '좋음', '🟢'
+    if val <= 80:  return '보통', '🟡'
+    if val <= 150: return '나쁨', '🟠'
+    return '매우나쁨', '🔴'
+
+def pm25_grade(val):
+    if val is None: return None, ''
+    if val <= 15:  return '좋음', '🟢'
+    if val <= 35:  return '보통', '🟡'
+    if val <= 75:  return '나쁨', '🟠'
+    return '매우나쁨', '🔴'
+
+def o3_grade(val):
+    if val is None: return None, ''
+    # ppm
+    if val <= 0.03: return '좋음', '🟢'
+    if val <= 0.09: return '보통', '🟡'
+    if val <= 0.15: return '나쁨', '🟠'
+    return '매우나쁨', '🔴'
+
+
 def parse_inform_grade(grade_str, region):
     """에어코리아 informGrade 문자열에서 region 등급 추출.
     포맷: '서울 : 보통,제주 : 보통,...'"""
@@ -362,7 +655,7 @@ def main():
 
     # 초단기예보로 가까운 0~6시간 정밀도 향상 (T1H→TMP 등 카테고리 매핑)
     ultra_map = fetch_ultra_short_forecast(now)
-    ULTRA_CAT_MAP = {'T1H': 'TMP', 'RN1': 'PCP', 'SKY': 'SKY', 'PTY': 'PTY', 'REH': 'REH', 'WSD': 'WSD'}
+    ULTRA_CAT_MAP = {'T1H': 'TMP', 'RN1': 'PCP', 'SKY': 'SKY', 'PTY': 'PTY', 'REH': 'REH', 'WSD': 'WSD', 'VEC': 'VEC'}
     ultra_count = 0
     for d_str, day in ultra_map.items():
         for t_str, cats in day.items():
@@ -382,7 +675,44 @@ def main():
     else:
         print(f"미세먼지 예보 ({DATA_GO_KR_REGION}): 데이터 없음 — 지역명 오타 또는 API 응답 확인 필요")
 
-    cache = {'TMP': '15', 'SKY': '1', 'PTY': '0', 'REH': '50', 'WSD': '1.0', 'POP': '0'}
+    # --- 풍부한 description 빌더용 사전계산 ---
+    LAT, LON = grid_to_latlon(NX, NY)
+    print(f"위경도 변환: NX={NX},NY={NY} → lat={LAT:.4f}, lon={LON:.4f}")
+    air_rt = fetch_air_realtime(now)
+    if air_rt:
+        print(f"실시간 대기질: PM10={air_rt.get('PM10','-')}, PM25={air_rt.get('PM25','-')}, O3={air_rt.get('O3','-')}")
+    yesterday_str = (today_dt - timedelta(days=1)).strftime('%Y%m%d')
+    y_minmax = extract_yesterday_max(cached_events, yesterday_str)
+
+    # 오늘 AM/PM 대표 날씨 추출
+    def _am_pm_weather(day_data):
+        am_skies, pm_skies = [], []
+        am_pty, pm_pty = [], []
+        for t_str, cats in day_data.items():
+            try:
+                h = int(t_str[:2])
+            except ValueError:
+                continue
+            sky, pty = cats.get('SKY'), cats.get('PTY')
+            if h < 12:
+                if sky: am_skies.append(sky)
+                if pty: am_pty.append(pty)
+            else:
+                if sky: pm_skies.append(sky)
+                if pty: pm_pty.append(pty)
+        def _rep(skies, ptys):
+            if not skies: return None
+            # 강수가 한 번이라도 있으면 그것이 우선
+            rain_p = next((p for p in ptys if p != '0'), '0')
+            if rain_p != '0':
+                return get_weather_info('1', rain_p)
+            # 가장 흔한 SKY
+            from collections import Counter
+            sky = Counter(skies).most_common(1)[0][0]
+            return get_weather_info(sky, '0')
+        return _rep(am_skies, am_pty), _rep(pm_skies, pm_pty)
+
+    cache = {'TMP': '15', 'SKY': '1', 'PTY': '0', 'REH': '50', 'WSD': '1.0', 'POP': '0', 'VEC': '0'}
     for d_str in sorted(forecast_map.keys()):
         if d_str < today_str or d_str > short_end_str:
             continue
@@ -391,12 +721,15 @@ def main():
         if not tmps: continue
         t_min, t_max = int(min(tmps)), int(max(tmps))
         rep_t = '1200' if '1200' in day_data else sorted(day_data.keys())[0]
-        rep_emoji, _ = get_weather_info(
+        rep_emoji, rep_label = get_weather_info(
             day_data[rep_t].get('SKY', cache['SKY']),
             day_data[rep_t].get('PTY', cache['PTY'])
         )
-        desc = []
+
+        # 시간별 슬롯 + 현재 시점에 가까운 데이터 기록
+        hourly_lines = []
         has_future_data = False
+        current_snap = None  # 가장 가까운 미래/현재 슬롯 데이터
         for h in range(24):
             t_str = f"{h:02d}00"
             event_time = seoul_tz.localize(datetime.strptime(f"{d_str}{t_str}", '%Y%m%d%H%M'))
@@ -410,26 +743,155 @@ def main():
                     details.append(f"☔{cache['POP']}%")
                 details.append(f"💧{cache['REH']}%")
                 details.append(f"🚩{cache['WSD']}m/s")
-                desc.append(f"[{t_str[:2]}시] {emoji} {wf_str} {cache['TMP']}°C ({' '.join(details)})")
+                hourly_lines.append(f"[{t_str[:2]}시] {emoji} {wf_str} {cache['TMP']}°C ({' '.join(details)})")
                 has_future_data = True
+                if current_snap is None:
+                    current_snap = dict(cache)
         if not has_future_data: continue
-        # 미세먼지 정보 (있으면 summary/description에 추가)
+
+        # 미세먼지 예보 등급 (오늘/내일/모레용)
         air_today = air_forecast.get(d_str, {})
-        pm10_grade = air_today.get('PM10')
-        pm25_grade = air_today.get('PM25')
-        pm10_em = PM_GRADE_EMOJI.get(pm10_grade, '')
-        pm25_em = PM_GRADE_EMOJI.get(pm25_grade, '')
-        summary_suffix = ""
-        if pm10_em or pm25_em:
-            summary_suffix = f" {pm10_em}{pm25_em}"
-            desc.insert(0, f"🌫️ 미세 {pm10_em} {pm10_grade or '-'} / 초미세 {pm25_em} {pm25_grade or '-'}\n")
+        pm10_fcst = air_today.get('PM10')
+        pm25_fcst = air_today.get('PM25')
+        pm10_em = PM_GRADE_EMOJI.get(pm10_fcst, '')
+        pm25_em = PM_GRADE_EMOJI.get(pm25_fcst, '')
+        summary_suffix = f" {pm10_em}{pm25_em}" if (pm10_em or pm25_em) else ""
+
+        # ─── 오늘 이벤트는 풍부한 description ───
+        if d_str == today_str:
+            am_w, pm_w = _am_pm_weather(day_data)
+            snap = current_snap or cache
+            now_emoji, now_label = get_weather_info(snap['SKY'], snap['PTY'])
+            wind_dir = wind_direction_text(snap.get('VEC', '0'))
+            wind_dir_text = f"({wind_dir}쪽에서) " if wind_dir else ""
+            wind_lbl = wind_message(snap['WSD'])
+
+            desc_lines = []
+            desc_lines.append(f"📍 {LOCATION_NAME} 날씨 (위경도 {LAT:.3f}, {LON:.3f})")
+            desc_lines.append("")
+            desc_lines.append(f"{now_emoji} 지금 날씨: {now_label}")
+            desc_lines.append(f"기온: {snap['TMP']}°C ({temp_comfort_message(snap['TMP'])})")
+            desc_lines.append(f"최고 온도: {t_max}°C / 최저 온도: {t_min}°C")
+            desc_lines.append(f"습도: {snap['REH']}%")
+            desc_lines.append(f"바람: {snap['WSD']} m/s ({wind_lbl}) {wind_dir_text}")
+            if am_w and pm_w:
+                desc_lines.append(f"오전 날씨: {am_w[0]} {am_w[1]} / 오후 날씨: {pm_w[0]} {pm_w[1]}")
+            desc_lines.append(f"오늘은 {umbrella_message(snap['POP'], snap['PTY'])}")
+            nr = find_next_rain(forecast_map, now, seoul_tz)
+            desc_lines.append(f"다음 비🌧 : {nr}" if nr else "다음 비🌧 : 예보 기간 내 강수 없음")
+            if y_minmax:
+                diff = t_max - y_minmax[1]
+                arrow = "높아요" if diff > 0 else ("낮아요" if diff < 0 else "같아요")
+                desc_lines.append(f"어제와 비교: 최고기온이 어제보다 {abs(diff)}°{arrow}")
+
+            # 대기질 (실측 + 예보)
+            desc_lines.append("")
+            if air_rt:
+                p10 = air_rt.get('PM10'); p10_l, p10_e = pm10_grade(p10)
+                p25 = air_rt.get('PM25'); p25_l, p25_e = pm25_grade(p25)
+                o3 = air_rt.get('O3'); o3_l, o3_e = o3_grade(o3)
+                if p10_l == '좋음' and p25_l == '좋음':
+                    desc_lines.append("😊 오늘 공기는 깨끗해요")
+                elif (p10_l == '나쁨' or p25_l == '나쁨' or p10_l == '매우나쁨' or p25_l == '매우나쁨'):
+                    desc_lines.append("😷 오늘 공기는 안 좋아요 — 마스크 권장")
+                else:
+                    desc_lines.append("🙂 오늘 공기는 보통이에요")
+                desc_lines.append(f"미세먼지 (PM10): {p10} ㎍/㎥ ({p10_e} {p10_l})")
+                desc_lines.append(f"초미세먼지 (PM2.5): {p25} ㎍/㎥ ({p25_e} {p25_l})")
+                if o3_l:
+                    desc_lines.append(f"오존(O₃): {o3} ppm ({o3_e} {o3_l})")
+            elif pm10_fcst or pm25_fcst:
+                desc_lines.append(f"미세먼지 예보 ({DATA_GO_KR_REGION}): {pm10_em} PM10 {pm10_fcst or '-'} / {pm25_em} PM2.5 {pm25_fcst or '-'}")
+
+            # 내일 미리보기
+            tomorrow_str = (today_dt + timedelta(days=1)).strftime('%Y%m%d')
+            if tomorrow_str in forecast_map:
+                tdata = forecast_map[tomorrow_str]
+                t_tmps = [float(tdata[t]['TMP']) for t in tdata if 'TMP' in tdata[t]]
+                if t_tmps:
+                    tt_min, tt_max = int(min(t_tmps)), int(max(t_tmps))
+                    t_am, t_pm = _am_pm_weather(tdata)
+                    rep_t2 = '1200' if '1200' in tdata else sorted(tdata.keys())[0]
+                    t_emoji, _ = get_weather_info(tdata[rep_t2].get('SKY','1'), tdata[rep_t2].get('PTY','0'))
+                    desc_lines.append("")
+                    desc_lines.append(f"{t_emoji} 내일은?")
+                    desc_lines.append(f"최고 {tt_max}°C ({temp_comfort_message(tt_max)}) / 최저 {tt_min}°C ({temp_comfort_message(tt_min)})")
+                    if t_am and t_pm:
+                        desc_lines.append(f"오전: {t_am[0]} {t_am[1]} / 오후: {t_pm[0]} {t_pm[1]}")
+
+            # 천문 — 해
+            try:
+                city = LocationInfo("KR", "KR", "Asia/Seoul", LAT, LON)
+                s_today = sun(city.observer, date=now.date(), tzinfo=seoul_tz)
+                s_tomo = sun(city.observer, date=now.date()+timedelta(days=1), tzinfo=seoul_tz)
+                desc_lines.append("")
+                desc_lines.append("☀️ 오늘 해는?")
+                desc_lines.append(f"🌅 일출: {format_time_kor(s_today['sunrise'], now)}")
+                desc_lines.append(f"🌇 일몰: {format_time_kor(s_today['sunset'], now)}")
+                # 시민박명 (Civil twilight)
+                cd_morn = astral_dawn(city.observer, date=now.date(), tzinfo=seoul_tz, depression=6)
+                cd_eve  = astral_dusk(city.observer, date=now.date(), tzinfo=seoul_tz, depression=6)
+                desc_lines.append(f"🌆 시민박명: {format_time_kor(cd_morn, now)} ~ {format_time_kor(cd_eve, now)}")
+                # 천문박명 (Astronomical twilight)
+                ad_morn = astral_dawn(city.observer, date=now.date(), tzinfo=seoul_tz, depression=18)
+                ad_eve  = astral_dusk(city.observer, date=now.date(), tzinfo=seoul_tz, depression=18)
+                desc_lines.append(f"🌃 천문박명: {format_time_kor(ad_morn, now)} ~ {format_time_kor(ad_eve, now)}")
+
+                # 달
+                phase_idx = moon.phase(now.date())
+                illum = abs(math.cos(phase_idx / 29.53 * 2 * math.pi)) * 100  # 대략적 조도
+                # 더 정확한 조도는 ephem
+                mobs = ephem.Observer(); mobs.lat, mobs.lon = str(LAT), str(LON)
+                mobs.date = now.astimezone(pytz.UTC).strftime('%Y/%m/%d %H:%M:%S')
+                m_body = ephem.Moon(mobs)
+                illum = float(m_body.phase)
+                desc_lines.append("")
+                desc_lines.append(f"{moon_phase_emoji(phase_idx)} 달은?")
+                desc_lines.append(f"위상: {moon_phase_korean(phase_idx)} (조도 {illum:.0f}%)")
+                m_rise, m_set = compute_moon_times(LAT, LON, now.date())
+                desc_lines.append(f"🌒 월출: {format_time_kor(m_rise, now)}")
+                desc_lines.append(f"🌘 월몰: {format_time_kor(m_set, now)}")
+
+                # 은하수
+                gc_alt = compute_galactic_center_alt(LAT, LON, now)
+                moon_alt = math.degrees(float(m_body.alt))
+                in_night = ad_eve < now < (ad_morn + timedelta(days=1))
+                desc_lines.append("")
+                desc_lines.append("🌌 은하수 추적")
+                if gc_alt < 0:
+                    desc_lines.append(f"🔭 지금 상황: 관측불가 — 지평선 아래 (고도 {gc_alt:.1f}°)")
+                elif not in_night:
+                    desc_lines.append(f"🔭 지금 상황: 관측불가 — 아직 충분히 어둡지 않음 (고도 {gc_alt:.1f}°)")
+                elif illum > 70:
+                    desc_lines.append(f"🔭 지금 상황: 관측불리 — 달이 밝음 (고도 {gc_alt:.1f}°, 달 조도 {illum:.0f}%)")
+                else:
+                    desc_lines.append(f"🔭 지금 상황: 관측 가능 — 은하수 고도 {gc_alt:.1f}°")
+                desc_lines.append(f"달 고도: {moon_alt:.1f}°")
+                desc_lines.append(f"⏰ 오늘 밤 관측 가능 시간대: {format_time_kor(ad_eve, now)} ~ {format_time_kor(ad_morn + timedelta(days=1), now)}")
+            except Exception as e:
+                print(f"[WARN] 천문 계산 실패: {e}")
+
+            # 시간별 상세 (접혀 보이는 캘린더 앱이 많아서 마지막에)
+            desc_lines.append("")
+            desc_lines.append("⏱ 시간별 상세")
+            desc_lines.extend(hourly_lines)
+            desc_lines.append("")
+            desc_lines.append(f"📊 최종 업데이트: {update_ts} (KST)")
+            description = "\n".join(desc_lines)
+        else:
+            # 오늘 외 D+1~D+3: 기존 간단 포맷
+            desc_lines = []
+            if pm10_em or pm25_em:
+                desc_lines.append(f"🌫️ 미세 {pm10_em} {pm10_fcst or '-'} / 초미세 {pm25_em} {pm25_fcst or '-'}\n")
+            desc_lines.extend(hourly_lines)
+            desc_lines.append(f"\n최종 업데이트: {update_ts} (KST)")
+            description = "\n".join(desc_lines)
 
         event = Event()
         event.add('dtstamp', now)
         event.add('summary', f"{rep_emoji} {t_min}°C/{t_max}°C{summary_suffix}")
         event.add('location', LOCATION_NAME)
-        desc.append(f"\n최종 업데이트: {update_ts} (KST)")
-        event.add('description', "\n".join(desc))
+        event.add('description', description)
         event.add('dtstart', datetime.strptime(d_str, '%Y%m%d').date())
         event.add('dtend', datetime.strptime(d_str, '%Y%m%d').date() + timedelta(days=1))
         event.add('uid', f"{d_str}@short_summary")

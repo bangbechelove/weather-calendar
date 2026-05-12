@@ -583,14 +583,15 @@ def fetch_air_forecast(now):
     result = {}
     if not DATA_GO_KR_KEY or not DATA_GO_KR_REGION:
         return result
+    today_ymd = now.strftime('%Y-%m-%d')
     for code in ('PM10', 'PM25'):
         params = {
             'serviceKey': DATA_GO_KR_KEY,
             'returnType': 'json',
-            'numOfRows': 10,
+            'numOfRows': 100,
             'pageNo': 1,
-            'searchDate': '',
-            'informCode': code,
+            'searchDate': today_ymd,   # 빈 문자열 대신 명시적 날짜
+            'InformCode': code,          # 카멜 케이스 첫글자 대문자가 정확 (doc spec)
         }
         try:
             res = requests.get(

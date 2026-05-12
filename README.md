@@ -500,4 +500,4 @@ DESCRIPTION:
 ---
 
 > **🙏 출처(Original Author)**
-> 이 프로젝트는 [**@Murianwind**](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 를 기반으로 제작되었습니다. 원작자께 감사드립니다.
+> 이 프로젝트는 [**@Murianwind**](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 를 참고하여 제작되었습니다. 원작자께 감사드립니다.

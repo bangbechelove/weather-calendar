@@ -23,9 +23,6 @@
 - 🆓 KMA API 인증키 무료 + GitHub Free 플랜으로 **완전 무료** 운영
 - 🎨 이모지로 한눈에 — ☀️맑음 / ⛅구름많음 / ☁️흐림 / 🌧️비 / ❄️눈 / ☔소나기
 
-> **🙏 출처(Original Author)**
-> 이 프로젝트는 [**@Murianwind**](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 를 기반으로 제작되었습니다. 원작자께 감사드립니다.
-
 ---
 
 ## 📅 ICS 내부 데이터 예시
@@ -288,4 +285,7 @@ on:
 
 [MIT License](LICENSE) © 2026 redchupa
 
-원본 아이디어 및 초기 코드의 출처는 [@Murianwind](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 입니다.
+---
+
+> **🙏 출처(Original Author)**
+> 이 프로젝트는 [**@Murianwind**](https://github.com/Murianwind) 님의 [Murianwind/weather-calendar](https://github.com/Murianwind/weather-calendar) 를 기반으로 제작되었습니다. 원작자께 감사드립니다.

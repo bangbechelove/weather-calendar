@@ -1,27 +1,31 @@
 name: Update Weather ICS
 
 on:
-#  schedule:
-#    - cron: '15 17,20,23,2,5,8,11,14 * * *'
+  schedule:
+    # KST 02:15, 05:15, 08:15, 11:15, 14:15, 17:15, 20:15, 23:15
+    # (KMA 단기예보 02/05/08/11/14/17/20/23시 발표 직후)
+    - cron: '15 17,20,23,2,5,8,11,14 * * *'
   repository_dispatch:
-    types: [update-weather-ics]  
-  
+    types: [update-weather-ics]
   push:
     paths:
       - 'update_calendar.py'
+      - 'requirements.txt'
+      - '.github/workflows/update.yml'
     branches:
       - main
   workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
+
+concurrency:
+  group: update-weather-ics
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 🌟 여기에 위치시켜 보겠습니다.
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -31,12 +35,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
-        run: pip install requests pytz icalendar
+        run: pip install -r requirements.txt
 
       - name: Run update script
+        id: weather
         env:
           KMA_API_KEY: ${{ secrets.KMA_API_KEY }}
           KMA_NX: ${{ secrets.KMA_NX }}
@@ -50,11 +57,16 @@ jobs:
       - name: Commit and Push changes
         run: |
           KST_TIME=$(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M:%S')
+          SUMMARY="${{ steps.weather.outputs.summary }}"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add weather.ics
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Update weather.ics [$KST_TIME KST]"
+            if [ -n "$SUMMARY" ]; then
+              git commit -m "chore: update weather.ics — $SUMMARY [$KST_TIME KST]"
+            else
+              git commit -m "chore: update weather.ics [$KST_TIME KST]"
+            fi
             git push
           else
             echo "No changes to commit"

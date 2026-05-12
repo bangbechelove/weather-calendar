@@ -277,6 +277,86 @@ def filter_warnings(warnings):
         out.append(w)
     return out
 
+def fetch_earthquakes(now):
+    """KMA apihub 지진통보문 — 최근 24시간 내 지진 목록.
+    반환: [{'tm': datetime, 'lat': float, 'lon': float, 'mag': float, 'loc': str, 'intensity': str}, ...]
+    """
+    results = []
+    tm_to = now.strftime('%Y%m%d%H%M')
+    tm_from = (now - timedelta(days=1)).strftime('%Y%m%d%H%M')
+    url = (
+        f"https://apihub.kma.go.kr/api/typ01/url/eqk_web.php"
+        f"?tm1={tm_from}&tm2={tm_to}&disp=1&help=0&authKey={API_KEY}"
+    )
+    try:
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            print(f"[WARN] 지진 HTTP {res.status_code}")
+            return results
+        text = res.text
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] 지진 요청 실패: {e}")
+        return results
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [p.strip().strip('"') for p in line.split(',')]
+        if len(parts) < 6:
+            continue
+        try:
+            tm_dt = parse_kma_time(parts[0])
+            lat = float(parts[1]); lon = float(parts[2]); mag = float(parts[3])
+            loc = parts[4] if len(parts) > 4 else ''
+            intensity = parts[5] if len(parts) > 5 else ''
+            if tm_dt and mag >= 2.0:
+                results.append({
+                    'tm': tm_dt, 'lat': lat, 'lon': lon,
+                    'mag': mag, 'loc': loc, 'intensity': intensity,
+                })
+        except (ValueError, IndexError):
+            continue
+    return results
+
+
+def fetch_typhoons(now):
+    """KMA apihub 태풍정보 — 현재 활성 태풍 목록.
+    반환: [{'name': str, 'lat': float, 'lon': float, 'pressure': float, 'wind': float, 'tm': datetime}, ...]
+    """
+    results = []
+    url = f"https://apihub.kma.go.kr/api/typ01/url/typ_dpr_now.php?disp=1&help=0&authKey={API_KEY}"
+    try:
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            print(f"[WARN] 태풍 HTTP {res.status_code}")
+            return results
+        text = res.text
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] 태풍 요청 실패: {e}")
+        return results
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [p.strip().strip('"') for p in line.split(',')]
+        if len(parts) < 5:
+            continue
+        try:
+            tm_dt = parse_kma_time(parts[0])
+            name = parts[1] if len(parts) > 1 else ''
+            lat = float(parts[2]) if parts[2] else 0
+            lon = float(parts[3]) if parts[3] else 0
+            pressure = float(parts[4]) if parts[4] else 0
+            wind = float(parts[5]) if len(parts) > 5 and parts[5] else 0
+            results.append({
+                'tm': tm_dt, 'name': name, 'lat': lat, 'lon': lon,
+                'pressure': pressure, 'wind': wind,
+            })
+        except (ValueError, IndexError):
+            continue
+    return results
+
+
 def parse_kma_time(s):
     """KMA의 'YYYYMMDDHHMM' 또는 'YYYYMMDDHH' 문자열을 datetime으로"""
     s = str(s).strip()
@@ -1173,8 +1253,63 @@ def main():
         cal.add_component(ev)
         warning_count += 1
 
+    # --- [6. 지진] ---
+    quakes = fetch_earthquakes(now)
+    print(f"지진: 최근 24h 내 {len(quakes)}건 (규모 ≥ 2.0)")
+    quake_count = 0
+    for q in quakes:
+        if q['mag'] < 3.0:
+            continue  # 캘린더엔 규모 3.0 이상만
+        tm_local = seoul_tz.localize(q['tm']) if q['tm'].tzinfo is None else q['tm']
+        ev = Event()
+        ev.add('dtstamp', now)
+        ev.add('summary', f"🌋 지진 M{q['mag']:.1f} ({q['loc']})")
+        desc = [
+            f"발생: {tm_local.strftime('%Y-%m-%d %H:%M')} (KST)",
+            f"규모: M{q['mag']:.1f}",
+            f"위치: {q['loc']}",
+            f"위경도: {q['lat']:.2f}, {q['lon']:.2f}",
+        ]
+        if q['intensity']:
+            desc.append(f"진도: {q['intensity']}")
+        desc.append(f"\n최종 업데이트: {update_ts} (KST)")
+        ev.add('description', "\n".join(desc))
+        ev.add('location', q['loc'])
+        ev.add('dtstart', tm_local.date())
+        ev.add('dtend', tm_local.date() + timedelta(days=1))
+        ev.add('uid', f"eqk-{tm_local.strftime('%Y%m%d%H%M%S')}-{q['mag']}@kma")
+        ev.add('categories', 'EARTHQUAKE')
+        cal.add_component(ev)
+        quake_count += 1
+
+    # --- [7. 태풍] ---
+    typhoons = fetch_typhoons(now)
+    print(f"태풍: 현재 활성 {len(typhoons)}건")
+    typhoon_count = 0
+    for t in typhoons:
+        if not t.get('name'):
+            continue
+        ev = Event()
+        ev.add('dtstamp', now)
+        ev.add('summary', f"🌀 태풍 {t['name']} ({t['wind']:.0f}m/s)")
+        desc = [
+            f"태풍명: {t['name']}",
+            f"중심기압: {t['pressure']:.0f}hPa",
+            f"최대풍속: {t['wind']:.1f}m/s",
+            f"위치: lat {t['lat']:.2f}, lon {t['lon']:.2f}",
+            f"관측시각: {t['tm'].strftime('%Y-%m-%d %H:%M') if t['tm'] else '-'} (KST)",
+            f"\n최종 업데이트: {update_ts} (KST)",
+        ]
+        ev.add('description', "\n".join(desc))
+        ev.add('dtstart', now.date())
+        ev.add('dtend', now.date() + timedelta(days=1))
+        ev.add('uid', f"typ-{t['name']}-{now.strftime('%Y%m%d')}@kma")
+        ev.add('categories', 'TYPHOON')
+        cal.add_component(ev)
+        typhoon_count += 1
+
     print("최종 processed_dates:", sorted(processed_dates))
-    print(f"기상특보 이벤트: {warning_count}건 추가")
+    print(f"기상특보 이벤트: {warning_count}건 추가, 지진: {quake_count}건, 태풍: {typhoon_count}건")
     with open('weather.ics', 'wb') as f:
         f.write(cal.to_ical())
 
